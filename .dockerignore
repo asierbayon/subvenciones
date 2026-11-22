@@ -1,0 +1,7 @@
+node_modules
+.next
+data/raw
+data/*.sqlite
+data/*.sqlite-*
+data/build-report.json
+.git

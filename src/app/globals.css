@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg: #f3efe6;
+  --bg-elev: #fffdf8;
+  --ink: #1c1915;
+  --muted: #5c564c;
+  --line: #e4d9c8;
+  --accent: #0e6b56;
+  --accent-strong: #0a5645;
+  --accent-ink: #f4fff9;
+  --terra: #b64a2a;
+  --highlight: #f6e7cf;
+  --sidebar: #ebe4d6;
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #121614;
+  --bg-elev: #1c2420;
+  --ink: #f4eee4;
+  --muted: #c3b8a6;
+  --line: #31403a;
+  --accent: #8fd8b8;
+  --accent-strong: #b6ead2;
+  --accent-ink: #10241b;
+  --terra: #f0a58a;
+  --highlight: #2a3531;
+  --sidebar: #171e1b;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-paper: var(--bg);
+  --color-elev: var(--bg-elev);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-ink: var(--accent-ink);
+  --color-terra: var(--terra);
+  --color-highlight: var(--highlight);
+  --color-sidebar: var(--sidebar);
+  --font-sans: var(--font-source), "Source Sans 3", sans-serif;
+  --font-display: var(--font-fraunces), Georgia, serif;
+}
+
+body {
+  background:
+    radial-gradient(1200px 500px at 10% -10%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 60%),
+    var(--bg);
+  color: var(--ink);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 35%, white);
+}
