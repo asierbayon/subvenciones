@@ -18,9 +18,53 @@ Entre los dos ficheros de concesiones se leen 3.810.368 filas y quedan **3.794.4
 
 No hay JSON, SQL ni Parquet. No hay ficheros de personas físicas: el README de origen habla de 10,5 millones de concesiones, pero en `main` solo están las de personas jurídicas. El volcado es una foto, no una serie que se actualice: los CSV entraron con el scrape de 2022 (registros sobre todo de 2014 a marzo de 2022) y los commits de 2025 solo tocan documentación.
 
-Columnas útiles de convocatorias: identificador interno, código BDNS, marca MRR, administración, departamento, órgano, fecha de registro, título, URL de las bases. No hay plazo de solicitud, comunidad autónoma ni sector.
+### Columnas que trae el volcado
 
-Columnas útiles de concesiones: identificador, convocatoria, organismo, título, aplicación presupuestaria, fecha, beneficiario (NIF + nombre), importe, instrumento y ayuda equivalente.
+Los CSV no llevan cabecera. Los nombres salen de `db/mongodb/data/*-headers.csv` en el repositorio de origen. Posición 0 es la primera columna.
+
+**Convocatorias** (13 columnas, 350.078 filas, ninguna truncada):
+
+| # | Nombre en el origen | Qué es en la práctica |
+| --- | --- | --- |
+| 0 | `id` | Identificador interno del scrape. Es la clave con la que la concesión apunta a la convocatoria (`id_convocatoria`). |
+| 1 | `codigo_bdns` | Código BDNS. Único en este volcado. Construye la ficha oficial `…/convocatorias/{codigo}`. |
+| 2 | `MRR` | `SI` / `NO`. Solo 494 convocatorias marcadas SI. |
+| 3 | `administracion` | Administración convocante, a menudo la comunidad, el municipio o `ESTADO`. |
+| 4 | `departamento` | Órgano o departamento. Es el «organismo» que muestra Faro cuando viene informado. |
+| 5 | `organo` | Vacío en 295.015 filas. Cuando viene, es una unidad más fina (ICEX, fundaciones estatales…). |
+| 6 | `fecha_registro` | Fecha de registro en la BDNS (`dd/mm/aaaa`). No es el plazo de solicitud. |
+| 7 | `titulo_convocatoria` | Título. |
+| 8 | `url_bases_regul` | URL de las bases, a veces vacía o no oficial. |
+| 9 | `titulo_cooficial` | Título en otra lengua. Vacío casi siempre (17.938 informados). |
+| 10 | `colDesconocida1` | Siempre vacía. |
+| 11 | `colDesconocida2` | Siempre `350078`, el número de filas del fichero. No es un dato de la ayuda. |
+| 12 | `colDesconocida3` | Contador de fila del scrape (1…350078). |
+
+No hay columna de procedimiento, de concesión directa, de plazo, de comunidad autónoma, de sector ni de reintegros.
+
+**Concesiones a personas jurídicas** (17 columnas). En muestras de 80.000 filas de cada gzip todas tenían 17 campos.
+
+| # | Nombre en el origen | Qué es en la práctica |
+| --- | --- | --- |
+| 0 | `id` | Identificador de la concesión. |
+| 1 | `id_convocatoria` | Apunta a `convocatorias.id`. En el índice no queda ninguna concesión huérfana. |
+| 2 | `administracion` | Igual que en la convocatoria. |
+| 3 | `departamento` | Organismo que concede. |
+| 4 | `organo` | A menudo vacío. |
+| 5 | `titulo_convocatoria` | Título, repetido desde la convocatoria. |
+| 6 | `url_bases_regul` | URL de bases. |
+| 7 | `apli_presupuestaria` | Aplicación presupuestaria, texto libre. |
+| 8 | `fecha_concesion` | Fecha de concesión. |
+| 9 | `beneficiario` | NIF (letra + 7 dígitos + control) y, tras un espacio, el nombre. En la primera parte del fichero el NIF venía siempre. |
+| 10 | `importe` | Importe en euros, número simple (`500`, `10000`). |
+| 11 | `instrumento` | Solo cinco valores: subvención dineraria (2.953.663), garantía (825.892), préstamo (12.774), otros instrumentos (1.283), ventaja fiscal (862). |
+| 12 | `ayuda_equivalente` | Subvención equivalente. En las entregas dinerarias coincide con el importe; en garantías y préstamos puede no serlo. |
+| 13 | `detalles` | En las muestras solo vale `0` o `1` (casi siempre `0`). No es un reintegro ni un texto. |
+| 14 | `codigo_bdns` | Mismo código BDNS de la convocatoria. |
+| 15 | `valor_desconocido` | Identificador de tanda del scrape (`10413793`, `10435022`). No describe la ayuda. |
+| 16 | `id_interna` | Secuencia dentro de la tanda. |
+
+No hay columna de reintegro, de sanción, de tipo de procedimiento ni de «concesión directa». La vía directa solo se puede aproximar leyendo el título (`CONCESIÓN DIRECTA` aparece en 2.744 convocatorias; `NOMINATIV` en 53.554). Esa lectura es un proxy, no un campo de la BDNS. El enlace concesión → convocatoria sí está, por `id_convocatoria` y por `codigo_bdns`.
 
 ## Arquitectura
 
