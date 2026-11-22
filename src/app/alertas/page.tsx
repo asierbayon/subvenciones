@@ -22,6 +22,12 @@ const signals = [
     text: "Picos en los 45 días previos a unas elecciones, diciembres muy por encima del resto del año, y relevos bruscos de quién cobra.",
     table: "alert_calendario",
   },
+  {
+    href: "/alertas/estadistica",
+    title: "Señales estadísticas",
+    text: "Primer dígito frente a la ley de Benford, exceso de importes múltiplos de mil euros, y concesiones muy por encima de las de su mismo tipo.",
+    table: "alert_benford",
+  },
 ];
 
 const countTable = async (sql: string) => {
@@ -49,7 +55,8 @@ const AlertasPage = async () => {
     );
     const recurrentes = await countTable("SELECT COUNT(*) AS n FROM alert_recurrente");
     const calendario = await countTable("SELECT COUNT(*) AS n FROM alert_calendario");
-    return { fraccion, concentracion, recurrentes, calendario };
+    const benford = await countTable("SELECT COUNT(*) AS n FROM alert_benford WHERE alerta = 1");
+    return { fraccion, concentracion, recurrentes, calendario, benford };
   });
   if (counts === "missing") {
     return <SetupNeeded />;
@@ -89,6 +96,10 @@ const AlertasPage = async () => {
                   ? `${counts.calendario.toLocaleString("es-ES")} indicadores`
                   : ""}
                 {signal.table === "alert_calendario" && counts.calendario === null ? "Sin calcular" : ""}
+                {signal.table === "alert_benford" && counts.benford !== null
+                  ? `${counts.benford.toLocaleString("es-ES")} organismos lejos de Benford`
+                  : ""}
+                {signal.table === "alert_benford" && counts.benford === null ? "Sin calcular" : ""}
               </p>
             </Link>
           </li>

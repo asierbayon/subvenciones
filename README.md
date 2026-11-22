@@ -115,6 +115,12 @@ python3 pipeline/alerts.py calendario
 
 El calendario compara, para cada organismo, los 45 días previos a una elección con los 45 anteriores; diciembre con la media del resto de ese año; y los 45 días posteriores a un cambio de gobierno (2 jun 2018 y 8 ene 2020) con los 45 previos. Las elecciones autonómicas solo se miran en su comunidad; las generales, en todas. El relevo de beneficiarios es un índice de Jaccard inferior a 0,30 entre dos años seguidos, con al menos 15 perceptores en cada uno.
 
+```bash
+python3 pipeline/alerts.py estadistica
+```
+
+Benford usa la desviación media absoluta de Nigrini: por encima de 0,015, con al menos 200 subvenciones y un rango de importes de al menos cien veces. Los múltiplos de 1.000 € se marcan solo si superan en 20 puntos la cuota global del volcado (en este extracto, cerca del 19 % de las subvenciones de 1.000 € o más). Un atípico está a 3,5 desviaciones del logaritmo del importe respecto de las demás subvenciones del mismo organismo y del mismo tipo de beneficiario.
+
 ## Arranque
 
 Hace falta Node.js 22 y Python 3.10 o superior. El pipeline solo usa la biblioteca estándar.

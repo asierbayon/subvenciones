@@ -759,6 +759,260 @@ def build_calendario(connection: sqlite3.Connection) -> None:
     log(f"Calendario: {len(alerts)} indicadores")
 
 
+BENFORD = tuple(__import__("math").log10(1 + 1 / digit) for digit in range(1, 10))
+
+
+def build_estadistica(connection: sqlite3.Connection) -> None:
+    import math
+
+    log("Señales estadísticas por organismo")
+    connection.executescript(
+        """
+        DROP TABLE IF EXISTS alert_outlier;
+        DROP TABLE IF EXISTS alert_benford;
+        DROP TABLE IF EXISTS alert_redondo;
+        CREATE TABLE alert_benford (
+          id INTEGER PRIMARY KEY,
+          organismo TEXT NOT NULL,
+          organismo_norm TEXT NOT NULL,
+          ccaa TEXT NOT NULL,
+          n INTEGER NOT NULL,
+          mad REAL NOT NULL,
+          alerta INTEGER NOT NULL
+        );
+        CREATE TABLE alert_redondo (
+          id INTEGER PRIMARY KEY,
+          organismo TEXT NOT NULL,
+          organismo_norm TEXT NOT NULL,
+          ccaa TEXT NOT NULL,
+          n INTEGER NOT NULL,
+          cuota REAL NOT NULL,
+          cuota_global REAL NOT NULL,
+          alerta INTEGER NOT NULL
+        );
+        CREATE TABLE alert_outlier (
+          id INTEGER PRIMARY KEY,
+          concesion_id INTEGER NOT NULL,
+          organismo TEXT NOT NULL,
+          organismo_norm TEXT NOT NULL,
+          ccaa TEXT NOT NULL,
+          beneficiario_id INTEGER,
+          nombre TEXT NOT NULL,
+          nif TEXT,
+          tipo TEXT NOT NULL,
+          importe REAL NOT NULL,
+          mediana REAL NOT NULL,
+          zeta REAL NOT NULL,
+          n_grupo INTEGER NOT NULL
+        );
+        """
+    )
+    global_round = 0
+    global_base = 0
+    benford_rows: list[tuple] = []
+    round_rows: list[tuple] = []
+    current = None
+    digits = [0] * 10
+    n = 0
+    n_round = 0
+    n_base = 0
+    low = None
+    high = None
+    organismo = ""
+    ccaa = ""
+
+    def flush_body() -> None:
+        nonlocal global_round, global_base
+        if current is None or n < 30:
+            return
+        global_round += n_round
+        global_base += n_base
+        if n >= 200 and low and high and high / low >= 100:
+            observed = [digits[digit] / n for digit in range(1, 10)]
+            mad = sum(abs(observed[index] - BENFORD[index]) for index in range(9)) / 9
+            benford_rows.append((organismo, current, ccaa, n, mad, 1 if mad > 0.015 else 0))
+        if n_base >= 80:
+            round_rows.append((organismo, current, ccaa, n_base, n_round / n_base))
+
+    cursor = connection.execute(
+        """
+        SELECT organismo_norm, importe, organismo, COALESCE(ccaa, 'No determinada')
+        FROM concesiones
+        WHERE instrumento_slug = 'subvencion' AND importe >= 1 AND organismo_norm != ''
+        ORDER BY organismo_norm
+        """
+    )
+    for organismo_norm, importe, nombre, territorio in cursor:
+        if organismo_norm != current:
+            flush_body()
+            current = organismo_norm
+            digits = [0] * 10
+            n = 0
+            n_round = 0
+            n_base = 0
+            low = None
+            high = None
+            organismo = nombre
+            ccaa = territorio
+        amount = float(importe)
+        n += 1
+        if low is None or amount < low:
+            low = amount
+        if high is None or amount > high:
+            high = amount
+        digit = int(f"{amount:.12g}"[0])
+        if 1 <= digit <= 9:
+            digits[digit] += 1
+        if amount >= 1000:
+            n_base += 1
+            nearest = round(amount / 1000) * 1000
+            if abs(amount - nearest) < 0.05:
+                n_round += 1
+    flush_body()
+    baseline = (global_round / global_base) if global_base else 0
+    connection.executemany(
+        "INSERT INTO alert_benford (organismo, organismo_norm, ccaa, n, mad, alerta) VALUES (?,?,?,?,?,?)",
+        benford_rows,
+    )
+    connection.executemany(
+        """
+        INSERT INTO alert_redondo (organismo, organismo_norm, ccaa, n, cuota, cuota_global, alerta)
+        VALUES (?,?,?,?,?,?,?)
+        """,
+        [
+            (*row, baseline, 1 if row[3] >= 80 and row[4] >= baseline + 0.20 else 0)
+            for row in round_rows
+        ],
+    )
+    log(f"Benford {len(benford_rows)}; redondos {sum(1 for row in round_rows if row[4] >= baseline + 0.20)}; base redondeo {baseline:.1%}")
+
+    log("Atípicos frente a beneficiarios parecidos")
+    cursor = connection.execute(
+        """
+        SELECT organismo_norm, tipo_beneficiario, id, importe, organismo,
+               COALESCE(ccaa, 'No determinada'), beneficiario_id, beneficiario_nombre, COALESCE(nif, '')
+        FROM concesiones
+        WHERE instrumento_slug = 'subvencion' AND importe > 0
+          AND organismo_norm != '' AND tipo_beneficiario != ''
+        ORDER BY organismo_norm, tipo_beneficiario, id
+        """
+    )
+    outliers: list[tuple] = []
+    group_key = None
+    group: list[tuple] = []
+
+    def flush_group() -> None:
+        if len(group) < 40:
+            return
+        logs = [math.log(item[3]) for item in group]
+        mean = sum(logs) / len(logs)
+        var = sum((value - mean) ** 2 for value in logs) / len(logs)
+        if var <= 0.02:
+            return
+        std = math.sqrt(var)
+        ordered = sorted(item[3] for item in group)
+        median = ordered[len(ordered) // 2]
+        for item in group:
+            zeta = (math.log(item[3]) - mean) / std
+            if zeta < 3.5:
+                continue
+            outliers.append(
+                (
+                    item[2],
+                    item[4],
+                    item[0],
+                    item[5],
+                    item[6],
+                    item[7],
+                    item[8],
+                    item[1],
+                    item[3],
+                    median,
+                    zeta,
+                    len(group),
+                )
+            )
+
+    for row in cursor:
+        key = (row[0], row[1])
+        if group_key is None:
+            group_key = key
+        if key != group_key:
+            flush_group()
+            group = []
+            group_key = key
+        group.append(row)
+    flush_group()
+    outliers.sort(key=lambda item: item[10], reverse=True)
+    outliers = outliers[:4000]
+    connection.executemany(
+        """
+        INSERT INTO alert_outlier (
+          concesion_id, organismo, organismo_norm, ccaa, beneficiario_id, nombre, nif,
+          tipo, importe, mediana, zeta, n_grupo
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        outliers,
+    )
+    connection.executescript(
+        """
+        CREATE INDEX idx_benford ON alert_benford(alerta DESC, mad DESC);
+        CREATE INDEX idx_redondo ON alert_redondo(alerta DESC, cuota DESC);
+        CREATE INDEX idx_outlier ON alert_outlier(zeta DESC);
+        CREATE INDEX idx_benford_f ON alert_benford(ccaa, organismo_norm);
+        CREATE INDEX idx_redondo_f ON alert_redondo(ccaa, organismo_norm);
+        CREATE INDEX idx_outlier_f ON alert_outlier(ccaa, organismo_norm);
+        """
+    )
+    connection.commit()
+    log(f"Atípicos guardados: {len(outliers)}")
+
+
+def build_directa(connection: sqlite3.Connection) -> None:
+    log("Proxy de concesión directa a partir del título")
+    connection.executescript(
+        """
+        DROP TABLE IF EXISTS alert_directa;
+        CREATE TABLE alert_directa (
+          id INTEGER PRIMARY KEY,
+          organismo TEXT NOT NULL,
+          organismo_norm TEXT NOT NULL,
+          ccaa TEXT NOT NULL,
+          n INTEGER NOT NULL,
+          n_directa INTEGER NOT NULL,
+          n_nominativa INTEGER NOT NULL,
+          cuota REAL NOT NULL
+        );
+        INSERT INTO alert_directa (
+          organismo, organismo_norm, ccaa, n, n_directa, n_nominativa, cuota
+        )
+        SELECT MAX(organismo), organismo_norm, COALESCE(MAX(ccaa), 'No determinada'),
+               COUNT(*),
+               SUM(CASE
+                 WHEN UPPER(titulo) LIKE '%CONCESION DIRECTA%'
+                   OR UPPER(titulo) LIKE '%CONCESIÓN DIRECTA%'
+                   OR UPPER(titulo) LIKE '%CONCESSIO DIRECTA%'
+                   OR UPPER(titulo) LIKE '%CONCESSIÓ DIRECTA%'
+                 THEN 1 ELSE 0 END),
+               SUM(CASE WHEN UPPER(titulo) LIKE '%NOMINATIV%' THEN 1 ELSE 0 END),
+               0
+        FROM concesiones
+        WHERE instrumento_slug = 'subvencion' AND organismo_norm != ''
+        GROUP BY organismo_norm
+        HAVING COUNT(*) >= 20;
+        UPDATE alert_directa
+        SET cuota = (n_directa + n_nominativa) * 1.0 / n
+        WHERE n > 0;
+        DELETE FROM alert_directa WHERE n_directa + n_nominativa = 0;
+        CREATE INDEX idx_directa ON alert_directa(cuota DESC);
+        CREATE INDEX idx_directa_f ON alert_directa(ccaa, organismo_norm);
+        """
+    )
+    connection.commit()
+    count = connection.execute("SELECT COUNT(*) FROM alert_directa").fetchone()[0]
+    log(f"Concesión directa (proxy de título): {count} organismos")
+
+
 def main() -> None:
     step = sys.argv[1] if len(sys.argv) > 1 else "fraccionamiento"
     if step == "--self-check":
@@ -768,6 +1022,8 @@ def main() -> None:
         "fraccionamiento": build_fraccionamiento,
         "concentracion": build_concentracion,
         "calendario": build_calendario,
+        "estadistica": build_estadistica,
+        "directa": build_directa,
     }
     if step not in steps:
         known = ", ".join(steps)

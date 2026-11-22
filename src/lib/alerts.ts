@@ -344,6 +344,141 @@ export const listCalendario = async (filters: AlertFilters) => {
   return { rows: mapped, total, ccaa, anios, organismos, pageSize: ALERT_PAGE_SIZE };
 };
 
+export const listBenford = async (filters: AlertFilters) => {
+  const db = await getDb();
+  return listSimpleAlert(db, "alert_benford", filters, "mad");
+};
+
+export const listRedondo = async (filters: AlertFilters) => {
+  const db = await getDb();
+  return listSimpleAlert(db, "alert_redondo", filters, "cuota");
+};
+
+export const listOutliers = async (filters: AlertFilters) => {
+  const db = await getDb();
+  const clauses: string[] = [];
+  const params: SQLInputValue[] = [];
+  if (filters.ccaa) {
+    clauses.push("ccaa = ?");
+    params.push(filters.ccaa);
+  }
+  if (filters.organismo) {
+    clauses.push("organismo_norm LIKE ?");
+    params.push(`${fold(filters.organismo)}%`);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const total = asNumber((db.prepare(`SELECT COUNT(*) AS n FROM alert_outlier ${where}`).get(...params) as { n: number }).n);
+  const rows = db
+    .prepare(`SELECT * FROM alert_outlier ${where} ORDER BY zeta DESC LIMIT ? OFFSET ?`)
+    .all(...params, ALERT_PAGE_SIZE, (filters.page - 1) * ALERT_PAGE_SIZE) as Record<string, SQLOutputValue>[];
+  return {
+    total,
+    pageSize: ALERT_PAGE_SIZE,
+    rows: rows.map((row) => ({
+      id: asNumber(row.id),
+      concesionId: asNumber(row.concesion_id),
+      organismo: asString(row.organismo),
+      ccaa: asString(row.ccaa),
+      beneficiarioId: asNumberOrNull(row.beneficiario_id),
+      nombre: asString(row.nombre),
+      nif: asString(row.nif),
+      tipo: asString(row.tipo),
+      importe: asNumber(row.importe),
+      mediana: asNumber(row.mediana),
+      zeta: asNumber(row.zeta),
+      nGrupo: asNumber(row.n_grupo),
+    })),
+  };
+};
+
+const listSimpleAlert = (
+  db: Awaited<ReturnType<typeof getDb>>,
+  table: "alert_benford" | "alert_redondo",
+  filters: AlertFilters,
+  metric: "mad" | "cuota",
+) => {
+  const clauses = ["alerta = 1"];
+  const params: SQLInputValue[] = [];
+  if (filters.ccaa) {
+    clauses.push("ccaa = ?");
+    params.push(filters.ccaa);
+  }
+  if (filters.organismo) {
+    clauses.push("organismo_norm LIKE ?");
+    params.push(`${fold(filters.organismo)}%`);
+  }
+  const where = `WHERE ${clauses.join(" AND ")}`;
+  const total = asNumber((db.prepare(`SELECT COUNT(*) AS n FROM ${table} ${where}`).get(...params) as { n: number }).n);
+  const rows = db
+    .prepare(`SELECT * FROM ${table} ${where} ORDER BY ${metric} DESC LIMIT ? OFFSET ?`)
+    .all(...params, ALERT_PAGE_SIZE, (filters.page - 1) * ALERT_PAGE_SIZE) as Record<string, SQLOutputValue>[];
+  const ccaa = (db.prepare(`SELECT DISTINCT ccaa FROM ${table} ORDER BY ccaa`).all() as { ccaa: string }[]).map(
+    (row) => row.ccaa,
+  );
+  const organismos = (
+    db.prepare(`SELECT organismo FROM ${table} WHERE alerta = 1 GROUP BY organismo ORDER BY COUNT(*) DESC LIMIT 300`).all() as {
+      organismo: string;
+    }[]
+  ).map((row) => row.organismo);
+  return {
+    total,
+    pageSize: ALERT_PAGE_SIZE,
+    ccaa,
+    organismos,
+    rows: rows.map((row) => ({
+      id: asNumber(row.id),
+      organismo: asString(row.organismo),
+      ccaa: asString(row.ccaa),
+      n: asNumber(row.n),
+      mad: asNumber(row.mad),
+      cuota: asNumber(row.cuota),
+      cuotaGlobal: asNumber(row.cuota_global),
+    })),
+  };
+};
+
+export const listDirecta = async (filters: AlertFilters) => {
+  const db = await getDb();
+  const clauses: string[] = [];
+  const params: SQLInputValue[] = [];
+  if (filters.ccaa) {
+    clauses.push("ccaa = ?");
+    params.push(filters.ccaa);
+  }
+  if (filters.organismo) {
+    clauses.push("organismo_norm LIKE ?");
+    params.push(`${fold(filters.organismo)}%`);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const total = asNumber((db.prepare(`SELECT COUNT(*) AS n FROM alert_directa ${where}`).get(...params) as { n: number }).n);
+  const rows = db
+    .prepare(`SELECT * FROM alert_directa ${where} ORDER BY cuota DESC, n_directa DESC LIMIT ? OFFSET ?`)
+    .all(...params, ALERT_PAGE_SIZE, (filters.page - 1) * ALERT_PAGE_SIZE) as Record<string, SQLOutputValue>[];
+  const ccaa = (db.prepare("SELECT DISTINCT ccaa FROM alert_directa ORDER BY ccaa").all() as { ccaa: string }[]).map(
+    (row) => row.ccaa,
+  );
+  const organismos = (
+    db.prepare("SELECT organismo FROM alert_directa GROUP BY organismo ORDER BY MAX(cuota) DESC LIMIT 300").all() as {
+      organismo: string;
+    }[]
+  ).map((row) => row.organismo);
+  return {
+    total,
+    pageSize: ALERT_PAGE_SIZE,
+    ccaa,
+    organismos,
+    rows: rows.map((row) => ({
+      id: asNumber(row.id),
+      organismo: asString(row.organismo),
+      ccaa: asString(row.ccaa),
+      n: asNumber(row.n),
+      nDirecta: asNumber(row.n_directa),
+      nNominativa: asNumber(row.n_nominativa),
+      cuota: asNumber(row.cuota),
+    })),
+  };
+};
+
 export const listFraccionamiento = async (filters: AlertFilters) => {
   const db = await getDb();
   const { where, params } = whereOf(filters);
