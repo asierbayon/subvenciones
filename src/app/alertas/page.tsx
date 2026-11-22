@@ -28,6 +28,12 @@ const signals = [
     text: "Primer dígito frente a la ley de Benford, exceso de importes múltiplos de mil euros, y concesiones muy por encima de las de su mismo tipo.",
     table: "alert_benford",
   },
+  {
+    href: "/alertas/directa",
+    title: "Concesión directa",
+    text: "Proxy de título: organismos cuya subvención dice «concesión directa» o «nominativa». El fichero no trae el procedimiento.",
+    table: "alert_directa",
+  },
 ];
 
 const countTable = async (sql: string) => {
@@ -56,7 +62,8 @@ const AlertasPage = async () => {
     const recurrentes = await countTable("SELECT COUNT(*) AS n FROM alert_recurrente");
     const calendario = await countTable("SELECT COUNT(*) AS n FROM alert_calendario");
     const benford = await countTable("SELECT COUNT(*) AS n FROM alert_benford WHERE alerta = 1");
-    return { fraccion, concentracion, recurrentes, calendario, benford };
+    const directa = await countTable("SELECT COUNT(*) AS n FROM alert_directa");
+    return { fraccion, concentracion, recurrentes, calendario, benford, directa };
   });
   if (counts === "missing") {
     return <SetupNeeded />;
@@ -100,6 +107,10 @@ const AlertasPage = async () => {
                   ? `${counts.benford.toLocaleString("es-ES")} organismos lejos de Benford`
                   : ""}
                 {signal.table === "alert_benford" && counts.benford === null ? "Sin calcular" : ""}
+                {signal.table === "alert_directa" && counts.directa !== null
+                  ? `${counts.directa.toLocaleString("es-ES")} organismos con esa pista`
+                  : ""}
+                {signal.table === "alert_directa" && counts.directa === null ? "Sin calcular" : ""}
               </p>
             </Link>
           </li>

@@ -121,6 +121,12 @@ python3 pipeline/alerts.py estadistica
 
 Benford usa la desviación media absoluta de Nigrini: por encima de 0,015, con al menos 200 subvenciones y un rango de importes de al menos cien veces. Los múltiplos de 1.000 € se marcan solo si superan en 20 puntos la cuota global del volcado (en este extracto, cerca del 19 % de las subvenciones de 1.000 € o más). Un atípico está a 3,5 desviaciones del logaritmo del importe respecto de las demás subvenciones del mismo organismo y del mismo tipo de beneficiario.
 
+```bash
+python3 pipeline/alerts.py directa
+```
+
+No hay columna de procedimiento ni de reintegro, así que no se fabrica una «concesión directa» oficial. El sustituto cuenta títulos que dicen «concesión directa», «concessió directa» o «nominativ» y ordena los organismos por esa cuota. Es una pista de texto, no el campo que la BDNS usa por dentro.
+
 ## Arranque
 
 Hace falta Node.js 22 y Python 3.10 o superior. El pipeline solo usa la biblioteca estándar.
