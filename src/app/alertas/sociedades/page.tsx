@@ -50,12 +50,12 @@ const SociedadesPage = async ({ searchParams }: { searchParams: Promise<AlertSea
       <PageIntro eyebrow="Registro mercantil" title="Sociedades recién creadas o de poco capital">
         <p>
           Cruza las sociedades del volcado con los anuncios del BORME de 2016 a 2023. Marca una subvención dineraria
-          cuando la sociedad se constituye poco antes, con un capital de hasta 3.000 €, cuando se disuelve o se
+          cuando la sociedad se constituye poco antes, con un capital de hasta 3.100 €, cuando se disuelve o se
           extingue poco después, o cuando la ayuda es al menos diez veces ese capital.
         </p>
       </PageIntro>
       <AlertBanner>
-        El capital social no es el patrimonio ni la facturación. Una sociedad limitada nueva con 3.000 € puede ser una
+        El capital social no es el patrimonio ni la facturación. Una sociedad limitada nueva con 3.100 € o menos puede ser una
         empresa pequeña perfectamente regular. El BORME no publica el NIF de forma sistemática: el cruce es por el
         nombre normalizado y se muestra la confianza.
       </AlertBanner>

@@ -47,7 +47,9 @@ DEFAULT_TO = "2023-12-31"
 NEW_DAYS = 365
 NEW_DISSOLVE_DAYS = 730
 DISSOLVE_SOON_DAYS = 540
-SMALL_CAPITAL = 3_000.0
+# 3.100 covers the 3.000 € minimum of an SL in those years and the figures the
+# gazette actually prints (3.006, 3.010, 3.100).
+SMALL_CAPITAL = 3_100.0
 GRANT_VS_CAPITAL = 10.0
 MIN_GRANT = 10_000.0
 CONSTITUTION_LAG_DAYS = 45
