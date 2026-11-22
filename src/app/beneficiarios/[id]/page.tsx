@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
-import { DataTable, YearChart, YearTable } from "@/components/dashboard-charts";
+import { DataTable, HorizontalBars, YearChart, YearTable } from "@/components/dashboard-charts";
 import { DataView, type Column } from "@/components/data-view";
 import { Fact } from "@/components/facts";
 import { PaginationBar } from "@/components/pagination-bar";
@@ -133,6 +133,7 @@ const BeneficiarioPage = async ({
         </figure>
         <figure className="rounded-3xl border border-line bg-elev p-4">
           <figcaption className="mb-2 font-display text-2xl">De dónde llega</figcaption>
+          <HorizontalBars data={loaded.found.territorios} />
           <DataTable data={loaded.found.territorios} firstColumn="Territorio" />
         </figure>
       </div>
