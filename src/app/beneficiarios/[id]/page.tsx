@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { DataTable, HorizontalBars, YearChart, YearTable } from "@/components/dashboard-charts";
 import { DataView, type Column } from "@/components/data-view";
 import { Fact } from "@/components/facts";
+import { RegistroMercantil } from "@/components/registro-mercantil";
 import { PaginationBar } from "@/components/pagination-bar";
 import { PageIntro, SetupNeeded } from "@/components/setup-needed";
 import { guard } from "@/lib/db";
@@ -125,6 +126,7 @@ const BeneficiarioPage = async ({
         <Fact label="Concesiones" value={formatNumber(row.nConcesiones)} />
         <Fact label="Importe" value={formatEuro(row.importeTotal)} />
       </dl>
+      <RegistroMercantil beneficiarioId={row.id} nif={row.nif} />
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <figure className="rounded-3xl border border-line bg-elev p-4">
           <figcaption className="mb-2 font-display text-2xl">Importe por año</figcaption>

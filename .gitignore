@@ -48,3 +48,6 @@ next-env.d.ts
 
 # BORME extract (rebuild with python3 pipeline/borme.py). Do not commit the bulletin cache.
 /data/borme/
+
+__pycache__/
+*.pyc

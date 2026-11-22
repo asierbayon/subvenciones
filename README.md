@@ -127,6 +127,35 @@ python3 pipeline/alerts.py directa
 
 No hay columna de procedimiento ni de reintegro, así que no se fabrica una «concesión directa» oficial. El sustituto cuenta títulos que dicen «concesión directa», «concessió directa» o «nominativ» y ordena los organismos por esa cuota. Es una pista de texto, no el campo que la BDNS usa por dentro.
 
+```bash
+python3 pipeline/borme.py run
+```
+
+El cruce con el BORME es un paso aparte. `pnpm data` no lo lanza, y el índice se puede construir y consultar sin él. Hace falta el índice ya generado. El script baja los sumarios de la [API de datos abiertos del BOE](https://www.boe.es/datosabiertos/api/api.php) entre el 1 ene 2016 y el 31 dic 2023, lee el XML de la sección primera (actos inscritos) y deja un extracto en `data/borme/` que no se versiona. Por defecto abre 4 descargas en paralelo y espera 0,12 s entre el inicio de cada petición. Si el servidor responde 429, alarga la pausa. El proceso se puede reanudar. La reutilización sigue las [condiciones del BOE](https://www.boe.es/informacion/aviso_legal/index.php): la interfaz cita «Basado en datos de la Agencia Estatal Boletín Oficial del Estado» y enlaza el anuncio.
+
+No se usan los PDF ni libreBORME / bormeparser. Esos proyectos ya parsean el boletín, pero a partir del PDF y con dependencias que no caben en un pipeline de biblioteca estándar. El XML oficial de la sección A, también para los años históricos, basta para constitución, capital, domicilio, nombramientos y disolución.
+
+El BORME identifica a la sociedad por el nombre y la hoja registral. El NIF aparece en muy pocos anuncios. El emparejamiento:
+
+1. Pasa el nombre a mayúsculas, quita tildes y puntuación.
+2. Quita al final la forma social (`SOCIEDAD LIMITADA`, `S.L.`, `S.L.U.`, `S.A.`, …), de modo que el anuncio y la BDNS coincidan aunque escriban la forma distinto.
+3. Si esa clave, en todo el extracto, apunta a una sola hoja y a un solo beneficiario, y el nombre tiene al menos dos palabras distintivas (o una sola palabra larga), la confianza es **alta**.
+4. Si la hoja es única pero el nombre es corto o genérico (`INVERSIONES`, `SERVICIOS`, un topónimo), la confianza es **media**.
+5. Si varias hojas o varios NIF comparten la clave, no se asigna ficha: queda **ambigua**.
+6. Un NIF escrito en el anuncio junto a la etiqueta CIF/NIF desempata: si coincide, la confianza pasa a alta; si contradice al beneficiario, el cruce se descarta.
+
+Las señales de sociedad usan confianza alta o media, y lo dicen en el texto. Los administradores compartidos solo usan confianza alta. Una persona entra si el nombre tiene al menos tres tokens; un administrador que es otra sociedad entra por su denominación normalizada. Se dejan fuera las personas que aparecen en más de 20 sociedades y los domicilios compartidos por más de 12: suelen ser homónimos o gestorías.
+
+Reglas, todas sobre subvenciones dinerarias:
+
+- **nueva_capital.** Constitución como mucho 365 días antes de la ayuda y capital publicado de hasta 3.000 €.
+- **nueva_disuelta.** Constitución en esos 365 días y disolución, extinción o cierre provisional en los 730 días posteriores a la ayuda.
+- **importe_capital.** Capital de hasta 3.000 € y una ayuda de al menos 10.000 € y de al menos diez veces ese capital.
+- **disuelta_pronto.** Disolución o extinción en los 540 días posteriores a una ayuda de al menos 10.000 €.
+- **administrador / socio / domicilio.** Dos o más NIF distintos cobran del mismo organismo y publican la misma persona o el mismo domicilio.
+
+`python3 pipeline/borme.py report` imprime las tasas de cruce. `python3 pipeline/borme.py --self-check` prueba el parser con un extracto corto de un anuncio real, sin red.
+
 ## Arranque
 
 Hace falta Node.js 22 y Python 3.10 o superior. El pipeline solo usa la biblioteca estándar.
@@ -180,3 +209,4 @@ Las URL están fijas en `pipeline/build_index.py` y apuntan a `raw.githubusercon
 - Volcado y código del repositorio de origen: Jaime Gómez-Obregón y quienes contribuyeron a [JaimeObregon/subvenciones](https://github.com/JaimeObregon/subvenciones), licencia GPL-3.0.
 - Datos de fondo: Base de Datos Nacional de Subvenciones, Ministerio de Hacienda, [infosubvenciones.es](https://www.infosubvenciones.es).
 - Municipios de apoyo para estimar la comunidad autónoma: relación INE redistribuida por [codeforspain/ds-organizacion-administrativa](https://github.com/codeforspain/ds-organizacion-administrativa), incluida en `pipeline/vendor/municipios.csv`.
+- Anuncios del Registro Mercantil: Agencia Estatal Boletín Oficial del Estado, [API de sumarios del BORME](https://www.boe.es/datosabiertos/api/api.php), reutilizados con las condiciones de la sede electrónica.
