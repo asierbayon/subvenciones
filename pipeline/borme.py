@@ -1772,9 +1772,9 @@ def build_sociedad_alerts(connection: sqlite3.Connection) -> None:
                     ratio_best = (ratio_value, picked[0], picked[1], picked[2] or "", grant)
             if fecha_dis and span_dis is not None and 0 <= span_dis <= DISSOLVE_SOON_DAYS and grant[5] >= MIN_GRANT:
                 cierre.append(grant)
-        if nueva:
-            first = min(nueva, key=lambda grant: grant[4])
-            span_new = day_span(fecha_const, first[4]) or 0
+        if nueva and max(grant[5] for grant in nueva) >= MIN_GRANT:
+            cited = max(nueva, key=lambda grant: grant[5])
+            span_new = day_span(fecha_const, cited[4]) or 0
             extra = ""
             if len(nueva) > 1:
                 extra = f" En ese primer año hay {len(nueva)} subvenciones de este organismo."
@@ -1783,7 +1783,7 @@ def build_sociedad_alerts(connection: sqlite3.Connection) -> None:
                 (
                     f"{caveat}{nombre} figura constituida en el BORME el {fecha_es(fecha_const)} "
                     f"({fuente_const or 'sin identificador'}), {span_new} días antes de la subvención del "
-                    f"{fecha_es(first[4])}. El capital publicado es {euro(nueva_capital or 0)}. "
+                    f"{fecha_es(cited[4])}. El capital publicado es {euro(nueva_capital or 0)}. "
                     "Una sociedad recién creada con capital mínimo puede ser un vehículo y también una empresa pequeña legítima. "
                     f"Es un indicador, no una prueba.{extra}"
                 ),
@@ -1793,16 +1793,16 @@ def build_sociedad_alerts(connection: sqlite3.Connection) -> None:
                 span_new,
                 nueva_cve,
             )
-        if corta:
-            first = min(corta, key=lambda grant: grant[4])
-            span_new = day_span(fecha_const, first[4]) or 0
-            span_dis = day_span(first[4], fecha_dis) or 0
+        if corta and max(grant[5] for grant in corta) >= MIN_GRANT:
+            cited = max(corta, key=lambda grant: grant[5])
+            span_new = day_span(fecha_const, cited[4]) or 0
+            span_dis = day_span(cited[4], fecha_dis) or 0
             emit(
                 "nueva_disuelta",
                 (
                     f"{caveat}Constituida el {fecha_es(fecha_const)} ({fuente_const or 'sin identificador'}) "
                     f"y con disolución o extinción publicada el {fecha_es(fecha_dis)} ({fuente_dis or 'sin identificador'}). "
-                    f"La subvención del {fecha_es(first[4])} cae {span_new} días después de la constitución y "
+                    f"La subvención del {fecha_es(cited[4])} cae {span_new} días después de la constitución y "
                     f"{span_dis} días antes del cierre. Es un indicador de sociedad de vida corta, no una prueba."
                 ),
                 corta,

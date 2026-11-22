@@ -50,8 +50,8 @@ const SociedadesPage = async ({ searchParams }: { searchParams: Promise<AlertSea
       <PageIntro eyebrow="Registro mercantil" title="Sociedades recién creadas o de poco capital">
         <p>
           Cruza las sociedades del volcado con los anuncios del BORME de 2016 a 2023. Marca una subvención dineraria
-          cuando la sociedad se constituye poco antes, con un capital de hasta 3.100 €, cuando se disuelve o se
-          extingue poco después, o cuando la ayuda es al menos diez veces ese capital.
+          de al menos 10.000 € cuando la sociedad se constituye poco antes, con un capital de hasta 3.100 €, cuando se
+          disuelve o se extingue poco después, o cuando la ayuda es al menos diez veces ese capital.
         </p>
       </PageIntro>
       <AlertBanner>
