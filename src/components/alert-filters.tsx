@@ -32,19 +32,21 @@ export const AlertFilterForm = ({ action, filters, ccaa, anios, organismos, tipo
             ))}
           </Select>
         </div>
-        <div className="flex flex-col gap-1">
-          <label htmlFor="alerta-anio" className="text-xs font-semibold tracking-wide text-muted uppercase">
-            Año
-          </label>
-          <Select id="alerta-anio" name="anio" defaultValue={filters.anio}>
-            <option value="">Cualquier año</option>
-            {anios.map((year) => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </Select>
-        </div>
+        {anios.length > 0 ? (
+          <div className="flex flex-col gap-1">
+            <label htmlFor="alerta-anio" className="text-xs font-semibold tracking-wide text-muted uppercase">
+              Año
+            </label>
+            <Select id="alerta-anio" name="anio" defaultValue={filters.anio}>
+              <option value="">Cualquier año</option>
+              {anios.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </Select>
+          </div>
+        ) : null}
         <div className="flex flex-col gap-1">
           <label htmlFor="alerta-organismo" className="text-xs font-semibold tracking-wide text-muted uppercase">
             Organismo
