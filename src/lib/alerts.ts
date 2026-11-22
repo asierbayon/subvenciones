@@ -41,6 +41,8 @@ export type FraccionAlert = {
   n: number;
   nConvocatorias: number;
   importeSuma: number;
+  puntuacion: number;
+  medianaOrganismo: number;
   items: FraccionItem[];
 };
 
@@ -485,7 +487,7 @@ export const listFraccionamiento = async (filters: AlertFilters) => {
   const total = asNumber((db.prepare(`SELECT COUNT(*) AS n FROM alert_fraccion ${where}`).get(...params) as { n: number }).n);
   const rows = db
     .prepare(
-      `SELECT * FROM alert_fraccion ${where} ORDER BY importe_suma DESC, id DESC LIMIT ? OFFSET ?`,
+      `SELECT * FROM alert_fraccion ${where} ORDER BY puntuacion DESC, importe_suma DESC, id DESC LIMIT ? OFFSET ?`,
     )
     .all(...params, ALERT_PAGE_SIZE, (filters.page - 1) * ALERT_PAGE_SIZE) as Record<string, SQLOutputValue>[];
   const ids = rows.map((row) => asNumber(row.id));
@@ -529,6 +531,8 @@ export const listFraccionamiento = async (filters: AlertFilters) => {
     n: asNumber(row.n),
     nConvocatorias: asNumber(row.n_convocatorias),
     importeSuma: asNumber(row.importe_suma),
+    puntuacion: asNumber(row.puntuacion),
+    medianaOrganismo: asNumber(row.mediana_organismo),
     items: itemsByAlert.get(asNumber(row.id)) ?? [],
   }));
   const ccaa = (db.prepare("SELECT DISTINCT ccaa FROM alert_fraccion ORDER BY ccaa").all() as { ccaa: string }[]).map(
