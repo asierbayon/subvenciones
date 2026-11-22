@@ -107,7 +107,7 @@ Son señales para revisar expedientes, no pruebas de un incumplimiento. El fracc
 python3 pipeline/alerts.py concentracion
 ```
 
-La concentración usa solo subvenciones dinerarias. El HHI es la suma de los cuadrados de la cuota de cada beneficiario. Se marca un organismo con al menos 20 concesiones y 4 beneficiarios si el HHI llega a 0,25 o si el mayor perceptor se lleva la mitad o más. 0,25 es la escala que el Departamento de Justicia de EE. UU. llama «muy concentrado» en un mercado; aquí es una regla de lectura, no una infracción. Los ganadores recurrentes son NIF que cobran de ese organismo en tres años distintos o más.
+La concentración usa solo subvenciones dinerarias. El HHI es la suma de los cuadrados de la cuota de cada beneficiario. Se marca un organismo con al menos 20 concesiones y 4 beneficiarios si el HHI llega a 0,25 o si el mayor perceptor se lleva la mitad o más. 0,25 es la escala que el Departamento de Justicia de EE. UU. llama «muy concentrado» en un mercado; aquí es una regla de lectura, no una infracción. Los ganadores recurrentes que se listan son entidades privadas, no universidades, con al menos cuatro años y un millón de euros acumulados. El resto de repeticiones anuales queda fuera de la lista.
 
 ```bash
 python3 pipeline/alerts.py calendario

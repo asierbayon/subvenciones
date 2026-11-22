@@ -59,7 +59,9 @@ const AlertasPage = async () => {
     const concentracion = await countTable(
       "SELECT COUNT(*) AS n FROM alert_concentracion WHERE anio = 0 AND alerta = 1",
     );
-    const recurrentes = await countTable("SELECT COUNT(*) AS n FROM alert_recurrente");
+    const recurrentes = await countTable(
+      "SELECT COUNT(*) AS n FROM alert_recurrente WHERE n_anios >= 4 AND importe >= 1000000 AND substr(nif, 1, 1) NOT IN ('P', 'Q', 'S') AND upper(nombre) NOT LIKE '%UNIVERSIDAD%' AND upper(nombre) NOT LIKE '%UNIVERSITAT%'",
+    );
     const calendario = await countTable("SELECT COUNT(*) AS n FROM alert_calendario");
     const benford = await countTable("SELECT COUNT(*) AS n FROM alert_benford WHERE alerta = 1");
     const directa = await countTable("SELECT COUNT(*) AS n FROM alert_directa");

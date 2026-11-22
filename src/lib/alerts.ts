@@ -224,6 +224,11 @@ export const listRecurrentes = async (filters: AlertFilters) => {
     from += " JOIN alert_recurrente_anio y ON y.recurrente_id = r.id AND y.anio = ?";
     params.push(Number(filters.anio));
   }
+  clauses.push("r.n_anios >= 4");
+  clauses.push("r.importe >= 1000000");
+  clauses.push("substr(r.nif, 1, 1) NOT IN ('P', 'Q', 'S')");
+  clauses.push("upper(r.nombre) NOT LIKE '%UNIVERSIDAD%'");
+  clauses.push("upper(r.nombre) NOT LIKE '%UNIVERSITAT%'");
   if (filters.ccaa) {
     clauses.push("r.ccaa = ?");
     params.push(filters.ccaa);
