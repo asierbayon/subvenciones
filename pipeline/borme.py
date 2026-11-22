@@ -214,10 +214,6 @@ MONEY_RE = re.compile(
     r"(Resultante\s+Suscrito|Capital\s+suscrito|Capital)\s*:\s*(\d[\d.]*)(?:\s*,\s*(\d{1,2}))?\s*Euros",
     re.IGNORECASE,
 )
-BEGIN_RE = re.compile(
-    r"Comienzo de operaciones\s*:\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
-    re.IGNORECASE,
-)
 INSCRIPTION_RE = re.compile(r"\((\d{1,2}\.\d{1,2}\.\d{2,4})\)\s*\.?\s*$")
 HOJA_RE = re.compile(r"\bH\s+([A-Z]{1,3})\s*-?\s*(\d{1,8})\b")
 DOM_RE = re.compile(
@@ -361,10 +357,31 @@ def parse_short_date(token: str) -> str | None:
     year = int(match.group(3))
     if year < 100:
         year = 1900 + year if year >= 70 else 2000 + year
+    if year < 1970 or year > 2030:
+        return None
     try:
         return datetime(year, month, day).strftime("%Y-%m-%d")
     except ValueError:
         return None
+
+
+def leading_date(fragment: str) -> str | None:
+    """First plausible date in a fragment.
+
+    Some announcements glue two dates («18.12.1518/12/2015»). A four-digit year
+    outside 1970-2030 is read again using only its first two digits.
+    """
+    for match in re.finditer(r"(\d{1,2})[./](\d{1,2})[./](\d{2,4})", fragment or ""):
+        parsed = parse_short_date(match.group(0))
+        if parsed:
+            return parsed
+        year_token = match.group(3)
+        if len(year_token) <= 2:
+            continue
+        parsed = parse_short_date(f"{match.group(1)}.{match.group(2)}.{year_token[:2]}")
+        if parsed:
+            return parsed
+    return None
 
 
 def parse_iso_day(value: str) -> str | None:
@@ -549,12 +566,12 @@ def parse_document(payload: bytes, default_fecha: str = "") -> list[Acto]:
             inscription = parse_short_date(inscription_match.group(1))
         constituted = 1 if CONST_RE.search(body) else 0
         begin = None
-        begin_match = BEGIN_RE.search(body)
-        if begin_match:
-            begin = parse_short_date(begin_match.group(1))
-        fecha_const = begin or (inscription if constituted else None)
+        marker = body.find("Comienzo de operaciones")
+        if marker >= 0:
+            begin = leading_date(body[marker : marker + 90])
+        fecha_const = begin or (inscription if constituted else None) or (fecha if constituted else None)
         dissolved = 1 if DISSOLVE_RE.search(body) else 0
-        fecha_dis = inscription if dissolved else None
+        fecha_dis = (inscription or fecha) if dissolved else None
         domicilio = parse_domicilio(body)
         nif_match = NIF_RE.search(body)
         nif = nif_match.group(1).upper() if nif_match else ""
@@ -634,6 +651,9 @@ def self_check() -> None:
     assert parse_money("Capital: 3.000,00 Euros.") == 3000
     assert parse_money("Capital: 2.436.000,00 Euros. Resultante Suscrito: 2.439.100,00 Euros.") == 2439100
     assert parse_short_date("15.02.18") == "2018-02-15"
+    assert parse_short_date("18.12.1518") is None
+    assert leading_date("18.12.1518/12/2015") == "2015-12-18"
+    assert leading_date("Comienzo de operaciones: 15.02.18. Objeto") == "2018-02-15"
     assert confidence("TRANSPORTES GARCIA LOPEZ", 1, 1) == "alta"
     assert confidence("INVERSIONES NORTE", 1, 1) == "media"
     assert confidence("INVERSIONES", 1, 1) == "debil"
@@ -2105,12 +2125,12 @@ def report() -> None:
                 print("--- reglas ---")
                 if table_exists(connection, "alert_borme_sociedad"):
                     for regla, n in connection.execute(
-                        "SELECT regla, COUNT(*) FROM alert_borme_sociedad GROUP BY regla ORDER BY n DESC"
+                        "SELECT regla, COUNT(*) AS n FROM alert_borme_sociedad GROUP BY regla ORDER BY n DESC"
                     ):
                         print(f"sociedad\t{regla}\t{n}")
                 if table_exists(connection, "alert_borme_vinculo"):
                     for tipo, n in connection.execute(
-                        "SELECT tipo, COUNT(*) FROM alert_borme_vinculo GROUP BY tipo ORDER BY n DESC"
+                        "SELECT tipo, COUNT(*) AS n FROM alert_borme_vinculo GROUP BY tipo ORDER BY n DESC"
                     ):
                         print(f"vinculo\t{tipo}\t{n}")
                 return
