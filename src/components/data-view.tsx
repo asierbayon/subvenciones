@@ -18,11 +18,20 @@ type DataViewProps<T> = {
   filters: Filters;
   rowKey: (row: T) => string;
   caption: string;
+  empty?: string;
 };
 
-export const DataView = <T,>({ rows, columns, path, filters, rowKey, caption }: DataViewProps<T>) => {
+export const DataView = <T,>({
+  rows,
+  columns,
+  path,
+  filters,
+  rowKey,
+  caption,
+  empty = "Ningún resultado con estos filtros. Prueba a quitar algún criterio.",
+}: DataViewProps<T>) => {
   if (rows.length === 0) {
-    return <EmptyState>Ningún resultado con estos filtros. Prueba a quitar algún criterio.</EmptyState>;
+    return <EmptyState>{empty}</EmptyState>;
   }
 
   return (

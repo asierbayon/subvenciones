@@ -147,6 +147,7 @@ const ConvocatoriaPage = async ({
           filters={cleared}
           rowKey={(item) => String(item.id)}
           caption="Concesiones de la convocatoria"
+          empty="Esta convocatoria no tiene concesiones a personas jurídicas en el volcado."
         />
         <PaginationBar path={path} filters={cleared} total={loaded.grants.total} pageSize={loaded.grants.pageSize} />
       </div>
