@@ -78,18 +78,22 @@ export const AlertPager = ({
   filters,
   total,
   pageSize,
+  field = "page",
 }: {
   path: string;
   filters: AlertFilters;
   total: number;
   pageSize: number;
+  field?: "page" | "pagina";
 }) => {
   const pages = Math.max(1, Math.ceil(total / pageSize));
-  const page = Math.min(filters.page, pages);
+  const page = Math.min(field === "pagina" ? filters.pagina : filters.page, pages);
   const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(total, page * pageSize);
-  const previousHref = page > 1 ? `${path}${alertQuery(filters, { page: page - 1 })}` : null;
-  const nextHref = page < pages ? `${path}${alertQuery(filters, { page: page + 1 })}` : null;
+  const previousPatch = field === "pagina" ? { pagina: page - 1 } : { page: page - 1 };
+  const nextPatch = field === "pagina" ? { pagina: page + 1 } : { page: page + 1 };
+  const previousHref = page > 1 ? `${path}${alertQuery(filters, previousPatch)}` : null;
+  const nextHref = page < pages ? `${path}${alertQuery(filters, nextPatch)}` : null;
   return (
     <nav aria-label="Paginación de alertas" className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <p className="text-sm text-muted">

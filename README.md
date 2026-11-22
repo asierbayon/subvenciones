@@ -103,6 +103,12 @@ python3 pipeline/alerts.py fraccionamiento
 
 Son señales para revisar expedientes, no pruebas de un incumplimiento. Hoy el primero es el fraccionamiento: el mismo NIF y el mismo organismo, con varias subvenciones dinerarias en poco tiempo justo por debajo de 15.000 €, 40.000 € o 200.000 €. Esos tres umbrales son, respectivamente, el contrato menor de servicios de la LCSP, el de obras, y el de minimis del Reglamento (UE) 1407/2013 (vigente en los años del volcado). No son topes de la Ley General de Subvenciones. Se descartan las rachas de un solo día y los bloques de más de seis concesiones, que parecen un programa y no un puñado de importes escondidos bajo la raya.
 
+```bash
+python3 pipeline/alerts.py concentracion
+```
+
+La concentración usa solo subvenciones dinerarias. El HHI es la suma de los cuadrados de la cuota de cada beneficiario. Se marca un organismo con al menos 20 concesiones y 4 beneficiarios si el HHI llega a 0,25 o si el mayor perceptor se lleva la mitad o más. 0,25 es la escala que el Departamento de Justicia de EE. UU. llama «muy concentrado» en un mercado; aquí es una regla de lectura, no una infracción. Los ganadores recurrentes son NIF que cobran de ese organismo en tres años distintos o más.
+
 ## Arranque
 
 Hace falta Node.js 22 y Python 3.10 o superior. El pipeline solo usa la biblioteca estándar.

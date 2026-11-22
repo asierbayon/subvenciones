@@ -328,18 +328,206 @@ def self_check() -> None:
     log("Autocomprobación de fraccionamiento correcta.")
 
 
+def build_concentracion(connection: sqlite3.Connection) -> None:
+    log("Concentración por organismo y año")
+    connection.executescript(
+        """
+        DROP TABLE IF EXISTS alert_recurrente_anio;
+        DROP TABLE IF EXISTS alert_recurrente;
+        DROP TABLE IF EXISTS alert_concentracion;
+
+        CREATE TABLE alert_concentracion (
+          id INTEGER PRIMARY KEY,
+          organismo TEXT NOT NULL,
+          organismo_norm TEXT NOT NULL,
+          ccaa TEXT NOT NULL,
+          anio INTEGER NOT NULL,
+          n INTEGER NOT NULL,
+          n_beneficiarios INTEGER NOT NULL,
+          importe REAL NOT NULL,
+          hhi REAL NOT NULL,
+          top1 REAL NOT NULL,
+          top5 REAL NOT NULL,
+          alerta INTEGER NOT NULL
+        );
+
+        CREATE TABLE alert_recurrente (
+          id INTEGER PRIMARY KEY,
+          organismo TEXT NOT NULL,
+          organismo_norm TEXT NOT NULL,
+          ccaa TEXT NOT NULL,
+          beneficiario_id INTEGER,
+          nif TEXT,
+          nombre TEXT NOT NULL,
+          n_anios INTEGER NOT NULL,
+          anio_min INTEGER NOT NULL,
+          anio_max INTEGER NOT NULL,
+          n INTEGER NOT NULL,
+          importe REAL NOT NULL
+        );
+
+        CREATE TABLE alert_recurrente_anio (
+          recurrente_id INTEGER NOT NULL,
+          anio INTEGER NOT NULL
+        );
+        """
+    )
+    connection.execute(
+        """
+        CREATE TEMP TABLE alert_body_year AS
+        SELECT organismo_norm, anio, COUNT(*) AS n, SUM(importe) AS importe,
+               MAX(organismo) AS organismo, MAX(ccaa) AS ccaa
+        FROM concesiones
+        WHERE instrumento_slug = 'subvencion' AND importe > 0 AND anio IS NOT NULL
+          AND organismo_norm != ''
+        GROUP BY organismo_norm, anio
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO alert_concentracion (
+          organismo, organismo_norm, ccaa, anio, n, n_beneficiarios, importe, hhi, top1, top5, alerta
+        )
+        SELECT body.organismo, shares.organismo_norm, COALESCE(body.ccaa, 'No determinada'),
+               shares.anio, body.n, shares.n_ben, shares.total, shares.hhi, shares.top1, shares.top5,
+               CASE
+                 WHEN body.n >= 20 AND shares.n_ben >= 4 AND (shares.hhi >= 0.25 OR shares.top1 >= 0.5)
+                 THEN 1 ELSE 0
+               END
+        FROM (
+          SELECT organismo_norm, anio,
+                 MAX(n_ben) AS n_ben,
+                 MAX(total) AS total,
+                 MAX(sumsq) / (MAX(total) * MAX(total)) AS hhi,
+                 MAX(CASE WHEN rn = 1 THEN importe END) / MAX(total) AS top1,
+                 SUM(CASE WHEN rn <= 5 THEN importe ELSE 0 END) / MAX(total) AS top5
+          FROM (
+            SELECT organismo_norm, anio, importe,
+                   ROW_NUMBER() OVER (PARTITION BY organismo_norm, anio ORDER BY importe DESC) AS rn,
+                   SUM(importe) OVER (PARTITION BY organismo_norm, anio) AS total,
+                   COUNT(*) OVER (PARTITION BY organismo_norm, anio) AS n_ben,
+                   SUM(importe * importe) OVER (PARTITION BY organismo_norm, anio) AS sumsq
+            FROM (
+              SELECT organismo_norm, anio, beneficiario_id, SUM(importe) AS importe
+              FROM concesiones
+              WHERE instrumento_slug = 'subvencion' AND importe > 0 AND anio IS NOT NULL
+                AND beneficiario_id IS NOT NULL AND organismo_norm != ''
+              GROUP BY organismo_norm, anio, beneficiario_id
+            )
+          )
+          GROUP BY organismo_norm, anio
+        ) AS shares
+        JOIN alert_body_year AS body
+          ON body.organismo_norm = shares.organismo_norm AND body.anio = shares.anio
+        WHERE body.n >= 15 AND shares.total > 0
+        """
+    )
+    log("Concentración de todo el periodo")
+    connection.execute(
+        """
+        INSERT INTO alert_concentracion (
+          organismo, organismo_norm, ccaa, anio, n, n_beneficiarios, importe, hhi, top1, top5, alerta
+        )
+        SELECT body.organismo, shares.organismo_norm, COALESCE(body.ccaa, 'No determinada'),
+               0, body.n, shares.n_ben, shares.total, shares.hhi, shares.top1, shares.top5,
+               CASE
+                 WHEN body.n >= 20 AND shares.n_ben >= 4 AND (shares.hhi >= 0.25 OR shares.top1 >= 0.5)
+                 THEN 1 ELSE 0
+               END
+        FROM (
+          SELECT organismo_norm,
+                 MAX(n_ben) AS n_ben,
+                 MAX(total) AS total,
+                 MAX(sumsq) / (MAX(total) * MAX(total)) AS hhi,
+                 MAX(CASE WHEN rn = 1 THEN importe END) / MAX(total) AS top1,
+                 SUM(CASE WHEN rn <= 5 THEN importe ELSE 0 END) / MAX(total) AS top5
+          FROM (
+            SELECT organismo_norm, importe,
+                   ROW_NUMBER() OVER (PARTITION BY organismo_norm ORDER BY importe DESC) AS rn,
+                   SUM(importe) OVER (PARTITION BY organismo_norm) AS total,
+                   COUNT(*) OVER (PARTITION BY organismo_norm) AS n_ben,
+                   SUM(importe * importe) OVER (PARTITION BY organismo_norm) AS sumsq
+            FROM (
+              SELECT organismo_norm, beneficiario_id, SUM(importe) AS importe
+              FROM concesiones
+              WHERE instrumento_slug = 'subvencion' AND importe > 0
+                AND beneficiario_id IS NOT NULL AND organismo_norm != ''
+              GROUP BY organismo_norm, beneficiario_id
+            )
+          )
+          GROUP BY organismo_norm
+        ) AS shares
+        JOIN (
+          SELECT organismo_norm, COUNT(*) AS n, SUM(importe) AS importe,
+                 MAX(organismo) AS organismo, MAX(ccaa) AS ccaa
+          FROM concesiones
+          WHERE instrumento_slug = 'subvencion' AND importe > 0 AND organismo_norm != ''
+          GROUP BY organismo_norm
+        ) AS body ON body.organismo_norm = shares.organismo_norm
+        WHERE body.n >= 15 AND shares.total > 0
+        """
+    )
+    log("Beneficiarios que repiten año tras año")
+    connection.execute(
+        """
+        INSERT INTO alert_recurrente (
+          organismo, organismo_norm, ccaa, beneficiario_id, nif, nombre,
+          n_anios, anio_min, anio_max, n, importe
+        )
+        SELECT MAX(organismo), organismo_norm, COALESCE(MAX(ccaa), 'No determinada'),
+               beneficiario_id, MAX(nif), MAX(beneficiario_nombre),
+               COUNT(DISTINCT anio), MIN(anio), MAX(anio), COUNT(*), SUM(importe)
+        FROM concesiones
+        WHERE instrumento_slug = 'subvencion' AND importe > 0 AND anio IS NOT NULL
+          AND beneficiario_id IS NOT NULL AND organismo_norm != ''
+        GROUP BY organismo_norm, beneficiario_id
+        HAVING COUNT(DISTINCT anio) >= 3
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO alert_recurrente_anio (recurrente_id, anio)
+        SELECT r.id, c.anio
+        FROM alert_recurrente r
+        JOIN concesiones c
+          ON c.organismo_norm = r.organismo_norm
+         AND c.beneficiario_id = r.beneficiario_id
+        WHERE c.instrumento_slug = 'subvencion' AND c.importe > 0 AND c.anio IS NOT NULL
+        GROUP BY r.id, c.anio
+        """
+    )
+    connection.executescript(
+        """
+        CREATE INDEX idx_conc_filter ON alert_concentracion(anio, ccaa, hhi DESC);
+        CREATE INDEX idx_conc_org ON alert_concentracion(organismo_norm, anio);
+        CREATE INDEX idx_rec_filter ON alert_recurrente(ccaa, n_anios DESC, importe DESC);
+        CREATE INDEX idx_rec_rank ON alert_recurrente(n_anios DESC, importe DESC);
+        CREATE INDEX idx_rec_org ON alert_recurrente(organismo_norm);
+        CREATE INDEX idx_rec_anio ON alert_recurrente_anio(anio, recurrente_id);
+        """
+    )
+    connection.commit()
+    flagged = connection.execute("SELECT COUNT(*) FROM alert_concentracion WHERE alerta = 1 AND anio = 0").fetchone()[0]
+    recurrent = connection.execute("SELECT COUNT(*) FROM alert_recurrente").fetchone()[0]
+    log(f"Concentración: {flagged} organismos marcados en el periodo completo; {recurrent} ganadores recurrentes")
+
+
 def main() -> None:
     step = sys.argv[1] if len(sys.argv) > 1 else "fraccionamiento"
     if step == "--self-check":
         self_check()
         return
-    if step != "fraccionamiento":
-        raise SystemExit(f"Paso desconocido: {step}. De momento solo existe fraccionamiento.")
+    steps = {
+        "fraccionamiento": build_fraccionamiento,
+        "concentracion": build_concentracion,
+    }
+    if step not in steps:
+        known = ", ".join(steps)
+        raise SystemExit(f"Paso desconocido: {step}. Pasos: {known}")
     started = time.time()
     connection = connect()
     try:
-        self_check()
-        build_fraccionamiento(connection)
+        steps[step](connection)
     finally:
         connection.close()
     log(f"Hecho en {time.time() - started:.0f} s")
