@@ -86,7 +86,7 @@ El script enriquece tres campos que el CSV no trae, y la interfaz los marca como
 
 ## Limitaciones
 
-- No se puede saber qué convocatorias están abiertas hoy: no hay fecha de inicio ni de fin del plazo. La vista «Abiertas ahora» lista las registradas en los 60 días anteriores al cierre del volcado y enlaza con la [ficha oficial](https://www.infosubvenciones.es/bdnstrans/GE/es/convocatorias/), que sí publica el plazo.
+- No se puede saber qué convocatorias están abiertas hoy: no hay fecha de inicio ni de fin del plazo. La ficha oficial sí lo publica: [infosubvenciones.es](https://www.infosubvenciones.es/bdnstrans/GE/es/convocatorias/).
 - No hay personas físicas. Las concesiones del volcado empiezan en 2018 aunque haya convocatorias desde 2008.
 - Cerca del 1,4 % de las convocatorias queda en «No determinada»: homónimos (Torrent está en Girona y en Valencia) y nombres que el padrón no resuelve. Los bilingües con barra (`ELCHE/ELX`, `ALCOY/ALCOI`) sí se asignan.
 - Los importes de garantías y préstamos no son una entrega de dinero. El panel abre en «Solo subvenciones» y permite sumar todos los instrumentos.

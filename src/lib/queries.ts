@@ -524,9 +524,3 @@ export const getDashboard = async (vista: Vista) => {
     })),
   };
 };
-
-export const windowStart = (fechaMax: string) => {
-  const date = new Date(`${fechaMax}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() - 60);
-  return date.toISOString().slice(0, 10);
-};
