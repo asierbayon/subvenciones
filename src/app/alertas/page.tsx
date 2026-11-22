@@ -34,6 +34,12 @@ const signals = [
     text: "Proxy de título: organismos cuya subvención dice «concesión directa» o «nominativa». El fichero no trae el procedimiento.",
     table: "alert_directa",
   },
+  {
+    href: "/alertas/contratos",
+    title: "Contratos públicos",
+    text: "El mismo NIF cobra una ayuda y se adjudica un contrato del mismo organismo, o de la misma administración si el contrato es menor o no salió a convocatoria abierta.",
+    table: "alert_contrato",
+  },
 ];
 
 const countTable = async (sql: string) => {
@@ -63,7 +69,8 @@ const AlertasPage = async () => {
     const calendario = await countTable("SELECT COUNT(*) AS n FROM alert_calendario");
     const benford = await countTable("SELECT COUNT(*) AS n FROM alert_benford WHERE alerta = 1");
     const directa = await countTable("SELECT COUNT(*) AS n FROM alert_directa");
-    return { fraccion, concentracion, recurrentes, calendario, benford, directa };
+    const contratos = await countTable("SELECT COUNT(*) AS n FROM alert_contrato");
+    return { fraccion, concentracion, recurrentes, calendario, benford, directa, contratos };
   });
   if (counts === "missing") {
     return <SetupNeeded />;
@@ -111,6 +118,10 @@ const AlertasPage = async () => {
                   ? `${counts.directa.toLocaleString("es-ES")} organismos con esa pista`
                   : ""}
                 {signal.table === "alert_directa" && counts.directa === null ? "Sin calcular" : ""}
+                {signal.table === "alert_contrato" && counts.contratos !== null
+                  ? `${counts.contratos.toLocaleString("es-ES")} indicadores`
+                  : ""}
+                {signal.table === "alert_contrato" && counts.contratos === null ? "Sin calcular" : ""}
               </p>
             </Link>
           </li>

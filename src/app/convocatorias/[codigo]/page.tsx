@@ -9,6 +9,7 @@ import { PageIntro, SetupNeeded } from "@/components/setup-needed";
 import { guard } from "@/lib/db";
 import { formatDate, formatEuro, formatNumber } from "@/lib/format";
 import { parseFilters, type SearchParams } from "@/lib/params";
+import { ContratosPublicos } from "@/components/contratos-publicos";
 import { getConvocatoria, searchConcesiones, type Concesion } from "@/lib/queries";
 import { bdnsConvocatoriaUrl } from "@/lib/utils";
 
@@ -138,6 +139,7 @@ const ConvocatoriaPage = async ({
           Hay {loaded.found.duplicates} filas con este código BDNS. Se muestra la que acumula más concesiones.
         </p>
       ) : null}
+      <ContratosPublicos organismo={row.organismo} exact />
       <h2 className="mt-10 font-display text-3xl">Concesiones de esta convocatoria</h2>
       <div className="mt-4">
         <DataView
