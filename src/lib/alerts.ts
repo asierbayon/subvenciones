@@ -459,7 +459,7 @@ export const listDirecta = async (filters: AlertFilters) => {
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const total = asNumber((db.prepare(`SELECT COUNT(*) AS n FROM alert_directa ${where}`).get(...params) as { n: number }).n);
   const rows = db
-    .prepare(`SELECT * FROM alert_directa ${where} ORDER BY cuota DESC, n_directa DESC LIMIT ? OFFSET ?`)
+    .prepare(`SELECT * FROM alert_directa ${where} ORDER BY n_directa DESC, cuota DESC LIMIT ? OFFSET ?`)
     .all(...params, ALERT_PAGE_SIZE, (filters.page - 1) * ALERT_PAGE_SIZE) as Record<string, SQLOutputValue>[];
   const ccaa = (db.prepare("SELECT DISTINCT ccaa FROM alert_directa ORDER BY ccaa").all() as { ccaa: string }[]).map(
     (row) => row.ccaa,
