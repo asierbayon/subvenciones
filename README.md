@@ -93,6 +93,16 @@ El script enriquece tres campos que el CSV no trae, y la interfaz los marca como
 - El beneficiario se agrupa por NIF. Sin NIF, por el nombre normalizado.
 - La foto termina en 2022. Volver a lanzar el pipeline vuelve a bajar los mismos ficheros mientras el repositorio archivado no cambie. La BDNS oficial, desde la renovación del portal, ya ofrece descarga; este proyecto no la mezcla con el volcado de Obregón.
 
+## Alertas
+
+Los indicadores se calculan encima del índice, sin volver a leer los CSV:
+
+```bash
+python3 pipeline/alerts.py fraccionamiento
+```
+
+Son señales para revisar expedientes, no pruebas de un incumplimiento. Hoy el primero es el fraccionamiento: el mismo NIF y el mismo organismo, con varias subvenciones dinerarias en poco tiempo justo por debajo de 15.000 €, 40.000 € o 200.000 €. Esos tres umbrales son, respectivamente, el contrato menor de servicios de la LCSP, el de obras, y el de minimis del Reglamento (UE) 1407/2013 (vigente en los años del volcado). No son topes de la Ley General de Subvenciones. Se descartan las rachas de un solo día y los bloques de más de seis concesiones, que parecen un programa y no un puñado de importes escondidos bajo la raya.
+
 ## Arranque
 
 Hace falta Node.js 22 y Python 3.10 o superior. El pipeline solo usa la biblioteca estándar.

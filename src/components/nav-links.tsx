@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/concesiones", label: "Concesiones" },
   { href: "/beneficiarios", label: "Beneficiarios" },
   { href: "/abiertas", label: "Abiertas ahora" },
+  { href: "/alertas", label: "Alertas" },
 ];
 
 export const NavLinks = () => {
