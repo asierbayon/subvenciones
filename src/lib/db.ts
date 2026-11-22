@@ -20,7 +20,7 @@ export const getDb = async () => {
     return database;
   }
   const file = databasePath();
-  if (!fs.existsSync(file)) {
+  if (!fs.existsSync(/* turbopackIgnore: true */ file)) {
     throw new DatabaseMissingError();
   }
   database = new DatabaseSync(file, { readOnly: true });
