@@ -512,6 +512,253 @@ def build_concentracion(connection: sqlite3.Connection) -> None:
     log(f"Concentración: {flagged} organismos marcados en el periodo completo; {recurrent} ganadores recurrentes")
 
 
+ELECTIONS: tuple[tuple[str, str, str], ...] = (
+    ("2018-12-02", "Andalucía", "elecciones autonómicas de Andalucía"),
+    ("2019-04-28", "", "elecciones generales del 28 de abril de 2019"),
+    ("2019-05-26", "", "elecciones municipales y autonómicas del 26 de mayo de 2019"),
+    ("2019-11-10", "", "elecciones generales del 10 de noviembre de 2019"),
+    ("2020-07-12", "País Vasco", "elecciones autonómicas del País Vasco"),
+    ("2020-07-12", "Galicia", "elecciones autonómicas de Galicia"),
+    ("2021-02-14", "Cataluña", "elecciones autonómicas de Cataluña"),
+    ("2021-05-04", "Comunidad de Madrid", "elecciones autonómicas de Madrid"),
+    ("2022-02-13", "Castilla y León", "elecciones autonómicas de Castilla y León"),
+)
+
+GOVERNMENTS: tuple[tuple[str, str], ...] = (
+    ("2018-06-02", "toma de posesión de Pedro Sánchez tras la moción de censura del 1 de junio de 2018"),
+    ("2020-01-08", "formación del gobierno de coalición, 8 de enero de 2020"),
+)
+
+
+def window_total(days: list[tuple[datetime, int, float]], start: datetime, end: datetime) -> tuple[int, float]:
+    count = 0
+    amount = 0.0
+    for day, n, importe in days:
+        if day < start:
+            continue
+        if day >= end:
+            break
+        count += n
+        amount += importe
+    return count, amount
+
+
+def build_calendario(connection: sqlite3.Connection) -> None:
+    log("Calendario: agregando concesiones por organismo y día")
+    connection.executescript(
+        """
+        DROP TABLE IF EXISTS alert_calendario;
+        CREATE TABLE alert_calendario (
+          id INTEGER PRIMARY KEY,
+          tipo TEXT NOT NULL,
+          organismo TEXT NOT NULL,
+          organismo_norm TEXT NOT NULL,
+          ccaa TEXT NOT NULL,
+          anio INTEGER NOT NULL,
+          etiqueta TEXT NOT NULL,
+          motivo TEXT NOT NULL,
+          fecha_inicio TEXT NOT NULL,
+          fecha_fin TEXT NOT NULL,
+          n INTEGER NOT NULL,
+          importe REAL NOT NULL,
+          referencia REAL NOT NULL
+        );
+        """
+    )
+    rows = connection.execute(
+        """
+        SELECT organismo_norm, MAX(organismo), COALESCE(MAX(ccaa), 'No determinada'), fecha,
+               COUNT(*), SUM(importe)
+        FROM concesiones
+        WHERE instrumento_slug = 'subvencion' AND importe > 0 AND fecha IS NOT NULL
+          AND organismo_norm != ''
+        GROUP BY organismo_norm, fecha
+        ORDER BY organismo_norm, fecha
+        """
+    )
+    bodies: dict[str, dict] = {}
+    for organismo_norm, organismo, ccaa, fecha, n, importe in rows:
+        body = bodies.get(organismo_norm)
+        if body is None:
+            body = {"organismo": organismo, "ccaa": ccaa, "days": []}
+            bodies[organismo_norm] = body
+        body["days"].append((parse_day(fecha), int(n), float(importe)))
+    log(f"Organismos con calendario: {len(bodies)}")
+
+    alerts: list[tuple] = []
+
+    def add(tipo: str, body_key: str, anio: int, etiqueta: str, motivo: str, start: datetime, end: datetime, n: int, importe: float, referencia: float) -> None:
+        body = bodies[body_key]
+        alerts.append(
+            (
+                tipo,
+                body["organismo"],
+                body_key,
+                body["ccaa"],
+                anio,
+                etiqueta,
+                motivo,
+                start.strftime("%Y-%m-%d"),
+                (end - timedelta(days=1)).strftime("%Y-%m-%d"),
+                n,
+                importe,
+                referencia,
+            )
+        )
+
+    for key, body in bodies.items():
+        by_month: dict[tuple[int, int], list[float]] = {}
+        for day, n, importe in body["days"]:
+            bucket = by_month.setdefault((day.year, day.month), [0, 0.0])
+            bucket[0] += n
+            bucket[1] += importe
+        years = {year for year, _month in by_month}
+        for year in years:
+            december = by_month.get((year, 12))
+            if december is None or december[0] < 8:
+                continue
+            others = [by_month[(year, month)][0] for month in range(1, 12) if (year, month) in by_month]
+            if not others:
+                continue
+            baseline = sum(others) / len(others)
+            if baseline <= 0 or december[0] < 2 * baseline:
+                continue
+            add(
+                "diciembre",
+                key,
+                year,
+                f"Diciembre de {year}",
+                f"En diciembre de {year} este organismo concedió {december[0]} subvenciones, más del doble de la media del resto de meses de ese año ({baseline:.1f}). Puede ser el cierre presupuestario habitual.",
+                datetime(year, 12, 1),
+                datetime(year + 1, 1, 1),
+                int(december[0]),
+                december[1],
+                baseline,
+            )
+
+        for iso, ccaa, label in ELECTIONS:
+            if ccaa and body["ccaa"] != ccaa:
+                continue
+            election = parse_day(iso)
+            before_start = election - timedelta(days=45)
+            before_end = election
+            control_start = election - timedelta(days=90)
+            control_end = before_start
+            window_n, window_amount = window_total(body["days"], before_start, before_end)
+            control_n, _control_amount = window_total(body["days"], control_start, control_end)
+            if window_n < 8:
+                continue
+            if control_n > 0 and window_n < 2 * control_n:
+                continue
+            if control_n == 0 and window_n < 12:
+                continue
+            add(
+                "elecciones",
+                key,
+                election.year,
+                label,
+                f"En los 45 días anteriores a las {label} concedió {window_n} subvenciones, frente a {control_n} en los 45 días previos. Es un indicador de calendario, no de uso electoral del presupuesto.",
+                before_start,
+                before_end,
+                window_n,
+                window_amount,
+                float(control_n),
+            )
+
+        for iso, label in GOVERNMENTS:
+            change = parse_day(iso)
+            after_n, after_amount = window_total(body["days"], change, change + timedelta(days=45))
+            before_n, _before_amount = window_total(body["days"], change - timedelta(days=45), change)
+            if after_n < 8:
+                continue
+            if before_n > 0 and after_n < 2 * before_n:
+                continue
+            if before_n == 0 and after_n < 12:
+                continue
+            add(
+                "gobierno",
+                key,
+                change.year,
+                label,
+                f"En los 45 días posteriores a la {label} concedió {after_n} subvenciones, frente a {before_n} en los 45 días anteriores. Un cambio de ritmo puede obedecer al calendario administrativo.",
+                change,
+                change + timedelta(days=45),
+                after_n,
+                after_amount,
+                float(before_n),
+            )
+
+    log("Relevo del conjunto de beneficiarios")
+    year_sets: dict[tuple[str, int], set[int]] = {}
+    meta: dict[str, tuple[str, str]] = {}
+    for organismo_norm, anio, beneficiario_id, organismo, ccaa in connection.execute(
+        """
+        SELECT organismo_norm, anio, beneficiario_id, MAX(organismo), COALESCE(MAX(ccaa), 'No determinada')
+        FROM concesiones
+        WHERE instrumento_slug = 'subvencion' AND importe > 0 AND anio IS NOT NULL
+          AND beneficiario_id IS NOT NULL AND organismo_norm != ''
+        GROUP BY organismo_norm, anio, beneficiario_id
+        """
+    ):
+        year_sets.setdefault((organismo_norm, int(anio)), set()).add(int(beneficiario_id))
+        meta[organismo_norm] = (organismo, ccaa)
+    by_org: dict[str, list[int]] = {}
+    for organismo_norm, anio in year_sets:
+        if len(year_sets[(organismo_norm, anio)]) < 15:
+            continue
+        by_org.setdefault(organismo_norm, []).append(anio)
+    for organismo_norm, years in by_org.items():
+        years.sort()
+        for left, right in zip(years, years[1:]):
+            if right != left + 1:
+                continue
+            previous = year_sets[(organismo_norm, left)]
+            current = year_sets[(organismo_norm, right)]
+            if len(previous) < 15 or len(current) < 15:
+                continue
+            union = len(previous | current)
+            if union == 0:
+                continue
+            jaccard = len(previous & current) / union
+            if jaccard >= 0.30:
+                continue
+            organismo, ccaa = meta[organismo_norm]
+            alerts.append(
+                (
+                    "reemplazo",
+                    organismo,
+                    organismo_norm,
+                    ccaa,
+                    right,
+                    f"Relevo entre {left} y {right}",
+                    f"De {len(previous)} beneficiarios en {left} a {len(current)} en {right}, solo coinciden el {jaccard:.0%}. Un índice de Jaccard bajo indica que cambió quién cobraba, no que el cambio sea irregular.",
+                    f"{right}-01-01",
+                    f"{right}-12-31",
+                    len(current),
+                    0,
+                    jaccard,
+                )
+            )
+
+    connection.executemany(
+        """
+        INSERT INTO alert_calendario (
+          tipo, organismo, organismo_norm, ccaa, anio, etiqueta, motivo,
+          fecha_inicio, fecha_fin, n, importe, referencia
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        alerts,
+    )
+    connection.executescript(
+        """
+        CREATE INDEX idx_cal_filter ON alert_calendario(tipo, anio, ccaa);
+        CREATE INDEX idx_cal_org ON alert_calendario(organismo_norm);
+        """
+    )
+    connection.commit()
+    log(f"Calendario: {len(alerts)} indicadores")
+
+
 def main() -> None:
     step = sys.argv[1] if len(sys.argv) > 1 else "fraccionamiento"
     if step == "--self-check":
@@ -520,6 +767,7 @@ def main() -> None:
     steps = {
         "fraccionamiento": build_fraccionamiento,
         "concentracion": build_concentracion,
+        "calendario": build_calendario,
     }
     if step not in steps:
         known = ", ".join(steps)

@@ -11,13 +11,14 @@ type AlertFilterFormProps = {
   ccaa: string[];
   anios: number[];
   organismos: string[];
+  tipos?: { value: string; label: string }[];
 };
 
-export const AlertFilterForm = ({ action, filters, ccaa, anios, organismos }: AlertFilterFormProps) => {
+export const AlertFilterForm = ({ action, filters, ccaa, anios, organismos, tipos }: AlertFilterFormProps) => {
   const territorios = [...ccaa].sort(compareCcaa);
   return (
     <form action={action} method="get" className="mb-6 rounded-3xl border border-line bg-elev p-4">
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className={tipos ? "grid gap-3 md:grid-cols-4" : "grid gap-3 md:grid-cols-3"}>
         <div className="flex flex-col gap-1">
           <label htmlFor="alerta-ccaa" className="text-xs font-semibold tracking-wide text-muted uppercase">
             Territorio
@@ -57,6 +58,21 @@ export const AlertFilterForm = ({ action, filters, ccaa, anios, organismos }: Al
             autoComplete="off"
           />
         </div>
+        {tipos ? (
+          <div className="flex flex-col gap-1">
+            <label htmlFor="alerta-tipo" className="text-xs font-semibold tracking-wide text-muted uppercase">
+              Señal
+            </label>
+            <Select id="alerta-tipo" name="tipo" defaultValue={filters.tipo}>
+              <option value="">Cualquier señal</option>
+              {tipos.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+        ) : null}
       </div>
       <datalist id="alerta-organismos">
         {organismos.map((nombre) => (

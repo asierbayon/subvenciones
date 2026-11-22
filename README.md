@@ -109,6 +109,12 @@ python3 pipeline/alerts.py concentracion
 
 La concentración usa solo subvenciones dinerarias. El HHI es la suma de los cuadrados de la cuota de cada beneficiario. Se marca un organismo con al menos 20 concesiones y 4 beneficiarios si el HHI llega a 0,25 o si el mayor perceptor se lleva la mitad o más. 0,25 es la escala que el Departamento de Justicia de EE. UU. llama «muy concentrado» en un mercado; aquí es una regla de lectura, no una infracción. Los ganadores recurrentes son NIF que cobran de ese organismo en tres años distintos o más.
 
+```bash
+python3 pipeline/alerts.py calendario
+```
+
+El calendario compara, para cada organismo, los 45 días previos a una elección con los 45 anteriores; diciembre con la media del resto de ese año; y los 45 días posteriores a un cambio de gobierno (2 jun 2018 y 8 ene 2020) con los 45 previos. Las elecciones autonómicas solo se miran en su comunidad; las generales, en todas. El relevo de beneficiarios es un índice de Jaccard inferior a 0,30 entre dos años seguidos, con al menos 15 perceptores en cada uno.
+
 ## Arranque
 
 Hace falta Node.js 22 y Python 3.10 o superior. El pipeline solo usa la biblioteca estándar.

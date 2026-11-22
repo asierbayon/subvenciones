@@ -10,6 +10,7 @@ export type AlertFilters = {
   ccaa: string;
   organismo: string;
   anio: string;
+  tipo: string;
   page: number;
   pagina: number;
 };
@@ -60,6 +61,7 @@ export const parseAlertFilters = (params: AlertSearch): AlertFilters => {
     ccaa: first(params, "ccaa").trim(),
     organismo: first(params, "organismo").trim(),
     anio: first(params, "anio").trim(),
+    tipo: first(params, "tipo").trim(),
     page,
     pagina,
   };
@@ -76,6 +78,9 @@ export const alertQuery = (filters: AlertFilters, patch: Partial<AlertFilters> =
   }
   if (next.anio) {
     params.set("anio", next.anio);
+  }
+  if (next.tipo) {
+    params.set("tipo", next.tipo);
   }
   if (next.page > 1) {
     params.set("page", String(next.page));
@@ -265,6 +270,78 @@ export const listRecurrentes = async (filters: AlertFilters) => {
     anios: years.get(asNumber(row.id)) ?? [],
   }));
   return { rows: mapped, total, pageSize: ALERT_PAGE_SIZE };
+};
+
+export type CalendarioRow = {
+  id: number;
+  tipo: string;
+  organismo: string;
+  ccaa: string;
+  anio: number;
+  etiqueta: string;
+  motivo: string;
+  fechaInicio: string;
+  fechaFin: string;
+  n: number;
+  importe: number;
+  referencia: number;
+};
+
+export const listCalendario = async (filters: AlertFilters) => {
+  const db = await getDb();
+  const clauses: string[] = [];
+  const params: SQLInputValue[] = [];
+  if (filters.tipo) {
+    clauses.push("tipo = ?");
+    params.push(filters.tipo);
+  }
+  if (filters.ccaa) {
+    clauses.push("ccaa = ?");
+    params.push(filters.ccaa);
+  }
+  if (filters.anio) {
+    clauses.push("anio = ?");
+    params.push(Number(filters.anio));
+  }
+  if (filters.organismo) {
+    clauses.push("organismo_norm LIKE ?");
+    params.push(`${fold(filters.organismo)}%`);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const total = asNumber(
+    (db.prepare(`SELECT COUNT(*) AS n FROM alert_calendario ${where}`).get(...params) as { n: number }).n,
+  );
+  const rows = db
+    .prepare(
+      `SELECT * FROM alert_calendario ${where} ORDER BY n DESC, importe DESC LIMIT ? OFFSET ?`,
+    )
+    .all(...params, ALERT_PAGE_SIZE, (filters.page - 1) * ALERT_PAGE_SIZE) as Record<string, SQLOutputValue>[];
+  const mapped: CalendarioRow[] = rows.map((row) => ({
+    id: asNumber(row.id),
+    tipo: asString(row.tipo),
+    organismo: asString(row.organismo),
+    ccaa: asString(row.ccaa),
+    anio: asNumber(row.anio),
+    etiqueta: asString(row.etiqueta),
+    motivo: asString(row.motivo),
+    fechaInicio: asString(row.fecha_inicio),
+    fechaFin: asString(row.fecha_fin),
+    n: asNumber(row.n),
+    importe: asNumber(row.importe),
+    referencia: asNumber(row.referencia),
+  }));
+  const ccaa = (db.prepare("SELECT DISTINCT ccaa FROM alert_calendario ORDER BY ccaa").all() as { ccaa: string }[]).map(
+    (row) => row.ccaa,
+  );
+  const anios = (db.prepare("SELECT DISTINCT anio FROM alert_calendario ORDER BY anio").all() as { anio: number }[]).map(
+    (row) => asNumber(row.anio),
+  );
+  const organismos = (
+    db
+      .prepare("SELECT organismo FROM alert_calendario GROUP BY organismo ORDER BY COUNT(*) DESC LIMIT 300")
+      .all() as { organismo: string }[]
+  ).map((row) => row.organismo);
+  return { rows: mapped, total, ccaa, anios, organismos, pageSize: ALERT_PAGE_SIZE };
 };
 
 export const listFraccionamiento = async (filters: AlertFilters) => {
