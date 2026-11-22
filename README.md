@@ -127,6 +127,34 @@ python3 pipeline/alerts.py directa
 
 No hay columna de procedimiento ni de reintegro, así que no se fabrica una «concesión directa» oficial. El sustituto cuenta títulos que dicen «concesión directa», «concessió directa» o «nominativ» y ordena los organismos por esa cuota. Es una pista de texto, no el campo que la BDNS usa por dentro.
 
+```bash
+python3 pipeline/contratos.py
+```
+
+El cruce con contratación pública es opcional: `pnpm data` no lo descarga y el índice de subvenciones se abre igual si falta. Hace falta el SQLite ya construido. El script lee la sindicación ATOM/CODICE de la [Plataforma de Contratación del Sector Público](https://contrataciondelsectorpublico.gob.es) (datos abiertos del Ministerio de Hacienda), años 2018 a 2022, y borra cada ZIP al terminar. Con `--keep-raw` los deja en `data/raw/placsp/`, que no se versiona.
+
+Tres canales, porque ninguno trae el conjunto entero:
+
+| Canal | Qué publica | URL del ZIP anual |
+| --- | --- | --- |
+| `perfiles` | Licitaciones de órganos con perfil en la propia PLACSP, sin menores | `sindicacion_643/licitacionesPerfilesContratanteCompleto3_AAAA.zip` |
+| `menores` | Contratos menores de esos mismos perfiles, desde 2018 | `sindicacion_1143/contratosMenoresPerfilesContratantes_AAAA.zip` |
+| `agregadas` | Licitaciones que llegan desde plataformas autonómicas, sin menores | `sindicacion_1044/PlataformasAgregadasSinMenores_AAAA.zip` |
+
+El fichero de un año no es «lo adjudicado ese año»: es el paquete de actualizaciones de ese año. Puede repetir un expediente y puede no traer un contrato de 2018 que solo se modificó en 2023. Se conserva la actualización más reciente y se filtra por la fecha de adjudicación, de 2018 a 2022. Solo se guardan adjudicaciones (códigos de resultado 1, 2, 8, 9 y 11) cuyo NIF ya está entre los beneficiarios. El resto del XML no se almacena.
+
+Emparejar el organismo de la ayuda con el órgano de contratación es una aproximación. La BDNS no trae DIR3. El código se lee del anuncio (`schemeName="DIR3"` en el órgano y, si viene, en sus unidades superiores) y se asocia a un nombre ya normalizado. La normalización quita tildes y puntuación, unifica `Ajuntament`/`Concello`/`Udala` con ayuntamiento, `Xunta` con junta, y tira partículas (`de`, `la`, `y`). Un nombre que en la PLACSP apunta a un solo DIR3 sirve para reconocer ese código aunque el anuncio use otra variante. Si el mismo nombre apunta a varios códigos, no se usa: sería ambiguo.
+
+El indicador salta, dentro de 180 días, en este orden:
+
+1. **Mismo órgano.** El nombre normalizado coincide, o los dos lados comparten un DIR3 único, o los dos son el mismo ayuntamiento, diputación o cabildo aunque uno diga «junta de gobierno».
+2. **Misma jerarquía.** El organismo de la ayuda es una unidad superior en el anuncio, o los dos títulos son el mismo ministerio o la misma consejería tras unificar renombres de 2018-2022 (Hacienda y Función Pública con Hacienda, por ejemplo).
+3. **Misma administración.** Solo si el contrato es menor, negociado sin publicidad (código 3 del listado 2.07; el 4 es con publicidad), tramitación de emergencia o encargo formalizado. Aquí entran dos consejerías distintas de la misma comunidad, no todo el Estado con todo el Estado: «Administración General del Estado» se trata como un cajón, no como un órgano.
+
+Un padre de una sola palabra («Toledo», «Murcia») no se toma como órgano: en la jerarquía es la provincia, y casaría con todos los municipios. Valencia y Valencia de Don Juan tampoco se mezclan, porque el topónimo se compara entero.
+
+La pantalla lo etiqueta como indicador. Cada ficha dice qué regla ha saltado, enlaza las concesiones y el anuncio de la PLACSP, y se puede filtrar por territorio, año de adjudicación y organismo. No están los contratos menores de las plataformas autonómicas: el canal agregado los excluye y el de menores solo cubre perfiles alojados en la PLACSP.
+
 ## Arranque
 
 Hace falta Node.js 22 y Python 3.10 o superior. El pipeline solo usa la biblioteca estándar.
@@ -140,6 +168,18 @@ pnpm dev
 La aplicación queda en [http://127.0.0.1:43123](http://127.0.0.1:43123).
 
 `pnpm data` descarga los CSV en `data/raw/` (no se versionan) y escribe `data/bdns.sqlite`. Si los gzip ya están y pesan más de 1 MB, no los vuelve a bajar. Para forzar la descarga, borra `data/raw/`.
+
+El cruce con contratos públicos, si se quiere, va después y no toca el resto del índice:
+
+```bash
+pnpm contratos
+```
+
+Equivale a `python3 pipeline/contratos.py`. `--years 2018-2022`, `--feeds perfiles,menores,agregadas`, `--keep-raw`, `--alerts-only` y `--rebuild` están en el propio script. La autocomprobación, sin red y sin base de datos:
+
+```bash
+python3 pipeline/contratos.py --self-check
+```
 
 La base se puede apuntar a otra ruta con `BDNS_DB=/ruta/bdns.sqlite`.
 
