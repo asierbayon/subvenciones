@@ -16,7 +16,7 @@ const columns: Column<Convocatoria>[] = [
     header: "Convocatoria",
     sortKey: "titulo",
     cell: (row) => (
-      <Link href={`/convocatorias/${row.codigoBdns}`} className="font-semibold underline decoration-line underline-offset-2 hover:decoration-accent">
+      <Link href={`/convocatorias/${row.codigoBdns}`} className="xp-link">
         {row.titulo}
       </Link>
     ),

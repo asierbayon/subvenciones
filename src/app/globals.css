@@ -652,8 +652,11 @@ select.xp-input {
 }
 
 .xp-inset-list {
+  margin: 0;
+  list-style: none;
   border: 1px solid var(--xp-line);
   background: var(--bg-elev);
+  padding: 0;
 }
 
 .xp-inset-list > li + li {

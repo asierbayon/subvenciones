@@ -35,21 +35,21 @@ const BuscarPage = async ({ searchParams }: { searchParams: Promise<SearchParams
       <PageIntro eyebrow="Búsqueda" title={`Resultados para «${filters.q}»`}>
         <p>Coincidencias por título, organismo, nombre o NIF. Los acentos no importan.</p>
       </PageIntro>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <section>
-          <div className="mb-3 flex items-baseline justify-between gap-3">
-            <h2 className="font-display text-2xl">Convocatorias</h2>
-            <Link href={convocatoriasHref} className="text-sm font-semibold text-accent underline-offset-2 hover:underline">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className="xp-group">
+          <div className="mb-2 flex items-baseline justify-between gap-3">
+            <h2 className="xp-heading">Convocatorias</h2>
+            <Link href={convocatoriasHref} className="xp-link font-normal">
               Ver todas
             </Link>
           </div>
-          <ul className="grid gap-2">
+          <ul className="xp-inset-list">
             {loaded.convocatorias.rows.map((row) => (
-              <li key={row.id} className="rounded-2xl border border-line bg-elev px-4 py-3">
-                <Link href={`/convocatorias/${row.codigoBdns}`} className="font-semibold underline decoration-line underline-offset-2 hover:decoration-accent">
+              <li key={row.id} className="px-3 py-2">
+                <Link href={`/convocatorias/${row.codigoBdns}`} className="xp-link">
                   {row.titulo}
                 </Link>
-                <p className="mt-1 text-sm text-muted">
+                <p className="mt-1 text-muted">
                   {formatDate(row.fecha)} · {row.organismo}
                 </p>
               </li>
@@ -57,20 +57,20 @@ const BuscarPage = async ({ searchParams }: { searchParams: Promise<SearchParams
           </ul>
           {loaded.convocatorias.rows.length === 0 ? <p className="text-muted">Ninguna convocatoria coincide.</p> : null}
         </section>
-        <section>
-          <div className="mb-3 flex items-baseline justify-between gap-3">
-            <h2 className="font-display text-2xl">Beneficiarios</h2>
-            <Link href={beneficiariosHref} className="text-sm font-semibold text-accent underline-offset-2 hover:underline">
+        <section className="xp-group">
+          <div className="mb-2 flex items-baseline justify-between gap-3">
+            <h2 className="xp-heading">Beneficiarios</h2>
+            <Link href={beneficiariosHref} className="xp-link font-normal">
               Ver todos
             </Link>
           </div>
-          <ul className="grid gap-2">
+          <ul className="xp-inset-list">
             {loaded.beneficiarios.rows.map((row) => (
-              <li key={row.id} className="rounded-2xl border border-line bg-elev px-4 py-3">
-                <Link href={`/beneficiarios/${row.id}`} className="font-semibold underline decoration-line underline-offset-2 hover:decoration-accent">
+              <li key={row.id} className="px-3 py-2">
+                <Link href={`/beneficiarios/${row.id}`} className="xp-link">
                   {row.nombre}
                 </Link>
-                <p className="mt-1 text-sm text-muted">
+                <p className="mt-1 text-muted">
                   {row.nif} · {formatEuro(row.importeTotal)}
                 </p>
               </li>

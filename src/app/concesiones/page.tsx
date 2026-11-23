@@ -18,7 +18,7 @@ const columns: Column<Concesion>[] = [
     sortKey: "beneficiario",
     cell: (row) =>
       row.beneficiarioId ? (
-        <Link href={`/beneficiarios/${row.beneficiarioId}`} className="font-semibold underline decoration-line underline-offset-2 hover:decoration-accent">
+        <Link href={`/beneficiarios/${row.beneficiarioId}`} className="xp-link">
           {row.beneficiarioNombre}
         </Link>
       ) : (
@@ -37,7 +37,7 @@ const columns: Column<Concesion>[] = [
     sortKey: "importe",
     align: "right",
     cell: (row) => (
-      <Link href={`/concesiones/${row.id}`} className="font-semibold tabular-nums underline decoration-line underline-offset-2 hover:decoration-accent">
+      <Link href={`/concesiones/${row.id}`} className="xp-link tabular-nums">
         {formatEuro(row.importe)}
       </Link>
     ),
@@ -59,7 +59,7 @@ const columns: Column<Concesion>[] = [
     sortKey: "titulo",
     cell: (row) =>
       row.codigoBdns ? (
-        <Link href={`/convocatorias/${row.codigoBdns}`} className="underline decoration-line underline-offset-2 hover:decoration-accent">
+        <Link href={`/convocatorias/${row.codigoBdns}`} className="xp-link font-normal">
           {row.titulo}
         </Link>
       ) : (

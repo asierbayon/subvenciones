@@ -14,7 +14,7 @@ const columns: Column<Beneficiario>[] = [
     header: "Beneficiario",
     sortKey: "nombre",
     cell: (row) => (
-      <Link href={`/beneficiarios/${row.id}`} className="font-semibold underline decoration-line underline-offset-2 hover:decoration-accent">
+      <Link href={`/beneficiarios/${row.id}`} className="xp-link">
         {row.nombre}
         {row.nif ? <span className="mt-0.5 block font-mono text-xs font-normal text-muted">{row.nif}</span> : null}
       </Link>
