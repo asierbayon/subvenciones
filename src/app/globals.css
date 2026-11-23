@@ -896,14 +896,22 @@ select.xp-input {
 
 @media (max-width: 720px) {
   .xp-desktop {
-    padding: 0 0 30px;
+    padding: 0 0 36px;
   }
 
   .xp-window {
-    min-height: calc(100vh - 30px);
+    min-height: calc(100vh - 36px);
     border-right: 0;
     border-left: 0;
     border-radius: 0;
+  }
+
+  .xp-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .xp-toolbar .xp-input {
+    flex: 1 1 100%;
   }
 
   .xp-titlebar {
