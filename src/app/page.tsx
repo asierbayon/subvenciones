@@ -7,6 +7,13 @@ import { formatCompactEuro, formatDate, formatEuro, formatNumber } from "@/lib/f
 import { parseFilters, toQuery, type SearchParams } from "@/lib/params";
 import { getDashboard } from "@/lib/queries";
 
+const tabClass = (active: boolean) => {
+  if (active) {
+    return "xp-tab xp-tab-active";
+  }
+  return "xp-tab";
+};
+
 const Panel = async ({ searchParams }: { searchParams: Promise<SearchParams> }) => {
   const filters = parseFilters(await searchParams);
   const data = await guard(() => getDashboard(filters.vista));
@@ -30,18 +37,20 @@ const Panel = async ({ searchParams }: { searchParams: Promise<SearchParams> }) 
           a partir del título y del organismo.
         </p>
       </PageIntro>
-      <div className="mb-6 flex flex-wrap gap-2" role="group" aria-label="Qué importes se suman">
+      <div className="xp-tabs" role="tablist" aria-label="Qué importes se suman">
         <Link
           href={subvencionHref}
-          aria-current={filters.vista === "subvencion" ? "page" : undefined}
-          className={filters.vista === "subvencion" ? "rounded-full bg-accent px-4 py-2 text-sm font-semibold text-accent-ink" : "rounded-full border border-line bg-elev px-4 py-2 text-sm font-semibold"}
+          role="tab"
+          aria-selected={filters.vista === "subvencion"}
+          className={tabClass(filters.vista === "subvencion")}
         >
           Solo subvenciones
         </Link>
         <Link
           href={todosHref}
-          aria-current={filters.vista === "todos" ? "page" : undefined}
-          className={filters.vista === "todos" ? "rounded-full bg-accent px-4 py-2 text-sm font-semibold text-accent-ink" : "rounded-full border border-line bg-elev px-4 py-2 text-sm font-semibold"}
+          role="tab"
+          aria-selected={filters.vista === "todos"}
+          className={tabClass(filters.vista === "todos")}
         >
           Todos los instrumentos
         </Link>
@@ -57,52 +66,52 @@ const Panel = async ({ searchParams }: { searchParams: Promise<SearchParams> }) 
         ({formatEuro(data.meta.importeSubvencion)}). El total de todos los instrumentos es {formatEuro(data.meta.importeTotal)}.
       </p>
       <div className="mt-8 grid gap-4 xl:grid-cols-2">
-        <figure className="rounded-3xl border border-line bg-elev p-4">
-          <figcaption className="mb-2 font-display text-2xl">Importe por año</figcaption>
+        <figure className="xp-group">
+          <figcaption className="xp-heading">Importe por año</figcaption>
           <YearChart data={data.anios} />
           <YearTable data={data.anios} />
         </figure>
-        <figure className="rounded-3xl border border-line bg-elev p-4">
-          <figcaption className="mb-2 font-display text-2xl">Por territorio</figcaption>
+        <figure className="xp-group">
+          <figcaption className="xp-heading">Por territorio</figcaption>
           <HorizontalBars data={ccaa} />
           <DataTable data={ccaa} firstColumn="Territorio" />
         </figure>
-        <figure className="rounded-3xl border border-line bg-elev p-4">
-          <figcaption className="mb-2 font-display text-2xl">Mayores organismos</figcaption>
+        <figure className="xp-group">
+          <figcaption className="xp-heading">Mayores organismos</figcaption>
           <HorizontalBars data={data.organismos} />
           <DataTable data={data.organismos} firstColumn="Organismo" />
         </figure>
-        <figure className="rounded-3xl border border-line bg-elev p-4">
-          <figcaption className="mb-2 font-display text-2xl">Por instrumento, todo el volcado</figcaption>
+        <figure className="xp-group">
+          <figcaption className="xp-heading">Por instrumento, todo el volcado</figcaption>
           <HorizontalBars data={data.instrumentos} />
           <DataTable data={data.instrumentos} firstColumn="Instrumento" />
         </figure>
       </div>
-      <section className="mt-4 rounded-3xl border border-line bg-elev p-4">
-        <h2 className="font-display text-2xl">Beneficiarios con más importe</h2>
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full text-sm">
+      <section className="xp-group">
+        <h2 className="xp-heading">Beneficiarios con más importe</h2>
+        <div className="xp-table-frame mt-3">
+          <table className="xp-table">
             <caption className="sr-only">Doce beneficiarios con mayor importe en la vista seleccionada</caption>
             <thead>
-              <tr className="text-left text-xs tracking-wide text-muted uppercase">
-                <th scope="col" className="py-2 pr-3">Beneficiario</th>
-                <th scope="col" className="py-2 pr-3">Tipo</th>
-                <th scope="col" className="py-2 pr-3 text-right">Concesiones</th>
-                <th scope="col" className="py-2 text-right">Importe</th>
+              <tr>
+                <th scope="col">Beneficiario</th>
+                <th scope="col">Tipo</th>
+                <th scope="col" className="text-right">Concesiones</th>
+                <th scope="col" className="text-right">Importe</th>
               </tr>
             </thead>
             <tbody>
               {data.top.map((row) => (
-                <tr key={row.id} className="border-t border-line">
-                  <th scope="row" className="py-2 pr-3 text-left font-semibold">
-                    <Link href={`/beneficiarios/${row.id}`} className="underline decoration-line underline-offset-2 hover:decoration-accent">
+                <tr key={row.id}>
+                  <th scope="row" className="text-left">
+                    <Link href={`/beneficiarios/${row.id}`}>
                       {row.nombre}
                     </Link>
                     {row.nif ? <span className="mt-0.5 block font-mono text-xs font-normal text-muted">{row.nif}</span> : null}
                   </th>
-                  <td className="py-2 pr-3">{row.tipo}</td>
-                  <td className="py-2 pr-3 text-right tabular-nums">{formatNumber(row.n)}</td>
-                  <td className="py-2 text-right tabular-nums">{formatEuro(row.importe)}</td>
+                  <td>{row.tipo}</td>
+                  <td className="text-right tabular-nums">{formatNumber(row.n)}</td>
+                  <td className="text-right tabular-nums">{formatEuro(row.importe)}</td>
                 </tr>
               ))}
             </tbody>
