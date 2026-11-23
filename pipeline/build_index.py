@@ -757,9 +757,13 @@ def create_schema(connection: sqlite3.Connection) -> None:
           tokenize = "unicode61 remove_diacritics 2"
         );
 
+        -- Same external-content pattern as conv_fts. Rowid is beneficiarios.id.
+        -- Indexed text is the folded name plus the NIF, not a stored duplicate.
         CREATE VIRTUAL TABLE ben_fts USING fts5(
           nombre,
           nif,
+          content='beneficiarios',
+          content_rowid='id',
           tokenize = "unicode61 remove_diacritics 2"
         );
         """
