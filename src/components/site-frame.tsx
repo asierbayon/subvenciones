@@ -2,6 +2,7 @@ import { Search } from "lucide-react";
 import Link from "next/link";
 import { NavLinks } from "@/components/nav-links";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { XpWindow } from "@/components/xp-window";
 
 export const SiteFrame = ({ children }: { children: React.ReactNode }) => (
   <div className="mx-auto grid min-h-screen max-w-[1400px] md:grid-cols-[240px_1fr]">
@@ -50,7 +51,9 @@ export const SiteFrame = ({ children }: { children: React.ReactNode }) => (
         </div>
       </header>
       <main id="contenido" className="px-4 py-6 md:px-8 md:py-8">
-        {children}
+        <XpWindow label="Faro" title="Faro">
+          {children}
+        </XpWindow>
       </main>
     </div>
   </div>

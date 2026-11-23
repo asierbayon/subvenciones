@@ -212,6 +212,7 @@ body {
   content: "";
   position: absolute;
   bottom: 4px;
+  left: 6px;
   width: 8px;
   height: 2px;
   background: #fff;
@@ -234,6 +235,8 @@ body {
 .xp-caption-x::after {
   content: "";
   position: absolute;
+  top: 9px;
+  left: 5px;
   width: 10px;
   height: 2px;
   background: #fff;
