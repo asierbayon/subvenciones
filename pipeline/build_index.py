@@ -744,10 +744,16 @@ def create_schema(connection: sqlite3.Connection) -> None:
           importe REAL
         );
 
+        -- External content: the inverted index stays, the document text does not.
+        -- The loader writes the folded strings the search box already queries.
+        -- 'rebuild' would retokenize the display columns (nº12, 100ª, CORUÆA) and
+        -- change matches, so it is not used. content_rowid is convocatorias.id.
         CREATE VIRTUAL TABLE conv_fts USING fts5(
           titulo,
           organismo,
           codigo_bdns,
+          content='convocatorias',
+          content_rowid='id',
           tokenize = "unicode61 remove_diacritics 2"
         );
 
