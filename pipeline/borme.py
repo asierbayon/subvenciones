@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import re
+import socket
 import sqlite3
 import sys
 import threading
@@ -821,7 +822,7 @@ def fetch_bytes(url: str, pace: Pace) -> bytes | None:
             },
         )
         try:
-            with urllib.request.urlopen(request, timeout=50) as response:
+            with urllib.request.urlopen(request, timeout=30) as response:
                 payload = response.read()
                 encoding = (response.headers.get("Content-Encoding") or "").lower()
         except urllib.error.HTTPError as exc:
@@ -982,6 +983,7 @@ def insert_acts(connection: sqlite3.Connection, acts: list[Acto]) -> None:
 
 
 def fetch(start: str, end: str, workers: int, gap: float) -> None:
+    socket.setdefaulttimeout(30)
     start_day = datetime.strptime(start, "%Y-%m-%d")
     end_day = datetime.strptime(end, "%Y-%m-%d")
     days = weekdays(start_day, end_day)
