@@ -624,28 +624,34 @@ def fts_self_check() -> None:
     create_schema(connection)
     titulo = "Concesión directa nº12 en A Coruæa"
     organismo = "MINISTERIO DE HACIENDA Y FUNCIÓN PÚBLICA"
+    catalog = Catalog()
+    organismo_id = catalog.organismo_id(connection, "ESTADO", organismo, "", organismo, fold(organismo))
+    ccaa_id = catalog.ccaa_id(connection, UNMAPPED)
+    sector_id = catalog.sector_id(connection, "Otros")
     connection.execute(
         """
-        INSERT INTO convocatorias (
-          id, codigo_bdns, mrr, administracion, departamento, organo,
-          organismo, organismo_norm, fecha, anio, titulo, titulo_cooficial,
-          url_bases, ccaa, sector
-        ) VALUES (1, '100', 0, 'ESTADO', ?, '', ?, ?, '2020-01-02', 2020, ?, '', '', ?, 'Otros')
+        INSERT INTO convocatoria (
+          id, codigo_bdns, mrr, organismo_id, fecha, anio, titulo, titulo_cooficial,
+          url_bases, ccaa_id, sector_id
+        ) VALUES (1, '100', 0, ?, '2020-01-02', 2020, ?, '', '', ?, ?)
         """,
-        (organismo, organismo, fold(organismo), titulo, UNMAPPED),
+        (organismo_id, titulo, ccaa_id, sector_id),
     )
     connection.execute(
         "INSERT INTO conv_fts(rowid, titulo, organismo, codigo_bdns) VALUES (?,?,?,?)",
         (1, fold(titulo), fold(organismo), "100"),
     )
     nombre = "Baia Edicions A Coruæa SL"
+    persona_id = catalog.persona_id(
+        connection, "B00000019", nombre, fold(nombre), "Sociedad limitada", "N:B00000019"
+    )
+    tipo_id = catalog.tipo_id(connection, "Sociedad limitada")
     connection.execute(
         """
-        INSERT INTO beneficiarios (
-          id, ben_key, nif, nombre, nombre_norm, tipo, n_concesiones, importe_total
-        ) VALUES (3, 'N:B00000019', 'B00000019', ?, ?, 'Sociedad limitada', 1, 10)
+        INSERT INTO beneficiario (id, persona_id, tipo_id, n_concesiones, importe_total)
+        VALUES (3, ?, ?, 1, 10)
         """,
-        (nombre, fold(nombre)),
+        (persona_id, tipo_id),
     )
     connection.execute(
         "INSERT INTO ben_fts(rowid, nombre, nif) VALUES (3, ?, 'B00000019')",
@@ -723,13 +729,131 @@ def open_csv(path: Path):
     return handle, csv.reader(handle)
 
 
+class Catalog:
+    """Intern repeated strings once. The fact tables store the integer id."""
+
+    def __init__(self) -> None:
+        self.organismo: dict[tuple[str, str, str], int] = {}
+        self.ccaa: dict[str, int] = {}
+        self.sector: dict[str, int] = {}
+        self.tipo: dict[str, int] = {}
+        self.instrumento: dict[str, int] = {}
+        self.persona: dict[str, int] = {}
+        self.persona_rank: dict[str, tuple[str, str, str]] = {}
+
+    def organismo_id(
+        self,
+        connection: sqlite3.Connection,
+        administracion: str,
+        departamento: str,
+        organo: str,
+        organismo: str,
+        organismo_norm: str,
+    ) -> int:
+        key = (administracion, departamento, organo)
+        found = self.organismo.get(key)
+        if found is not None:
+            return found
+        cursor = connection.execute(
+            """
+            INSERT INTO lut_organismo (
+              administracion, departamento, organo, organismo, organismo_norm
+            ) VALUES (?,?,?,?,?)
+            """,
+            (administracion, departamento, organo, organismo, organismo_norm),
+        )
+        found = int(cursor.lastrowid)
+        self.organismo[key] = found
+        return found
+
+    def ccaa_id(self, connection: sqlite3.Connection, nombre: str) -> int:
+        return self._label(connection, self.ccaa, "lut_ccaa", nombre)
+
+    def sector_id(self, connection: sqlite3.Connection, nombre: str) -> int:
+        return self._label(connection, self.sector, "lut_sector", nombre)
+
+    def tipo_id(self, connection: sqlite3.Connection, nombre: str) -> int:
+        return self._label(connection, self.tipo, "lut_tipo", nombre)
+
+    def instrumento_id(self, connection: sqlite3.Connection, nombre: str, slug: str) -> int:
+        found = self.instrumento.get(slug)
+        if found is not None:
+            return found
+        cursor = connection.execute(
+            "INSERT INTO lut_instrumento (nombre, slug) VALUES (?, ?)",
+            (nombre, slug),
+        )
+        found = int(cursor.lastrowid)
+        self.instrumento[slug] = found
+        return found
+
+    def persona_id(
+        self,
+        connection: sqlite3.Connection,
+        nif: str,
+        nombre: str,
+        nombre_norm: str,
+        tipo: str,
+        ben_key: str,
+    ) -> int:
+        found = self.persona.get(ben_key)
+        if found is None:
+            cursor = connection.execute(
+                """
+                INSERT INTO lut_persona (ben_key, nif, nombre, nombre_norm, tipo)
+                VALUES (?,?,?,?,?)
+                """,
+                (ben_key, nif, nombre, nombre_norm, tipo),
+            )
+            found = int(cursor.lastrowid)
+            self.persona[ben_key] = found
+            self.persona_rank[ben_key] = (nombre, nombre_norm, tipo)
+            return found
+        previous = self.persona_rank[ben_key]
+        ranked = (min(previous[0], nombre), min(previous[1], nombre_norm), min(previous[2], tipo))
+        if ranked == previous:
+            return found
+        connection.execute(
+            "UPDATE lut_persona SET nombre = ?, nombre_norm = ?, tipo = ? WHERE id = ?",
+            (ranked[0], ranked[1], ranked[2], found),
+        )
+        self.persona_rank[ben_key] = ranked
+        return found
+
+    def _label(
+        self,
+        connection: sqlite3.Connection,
+        cache: dict[str, int],
+        table: str,
+        nombre: str,
+    ) -> int:
+        found = cache.get(nombre)
+        if found is not None:
+            return found
+        cursor = connection.execute(f"INSERT INTO {table} (nombre) VALUES (?)", (nombre,))
+        found = int(cursor.lastrowid)
+        cache[nombre] = found
+        return found
+
+
 def create_schema(connection: sqlite3.Connection) -> None:
     connection.executescript(
         """
+        DROP TABLE IF EXISTS conv_fts;
+        DROP TABLE IF EXISTS ben_fts;
+        DROP VIEW IF EXISTS convocatorias;
+        DROP VIEW IF EXISTS concesiones;
+        DROP VIEW IF EXISTS beneficiarios;
         DROP TABLE IF EXISTS meta;
-        DROP TABLE IF EXISTS convocatorias;
-        DROP TABLE IF EXISTS concesiones;
-        DROP TABLE IF EXISTS beneficiarios;
+        DROP TABLE IF EXISTS convocatoria;
+        DROP TABLE IF EXISTS concesion;
+        DROP TABLE IF EXISTS beneficiario;
+        DROP TABLE IF EXISTS lut_organismo;
+        DROP TABLE IF EXISTS lut_ccaa;
+        DROP TABLE IF EXISTS lut_sector;
+        DROP TABLE IF EXISTS lut_tipo;
+        DROP TABLE IF EXISTS lut_instrumento;
+        DROP TABLE IF EXISTS lut_persona;
         DROP TABLE IF EXISTS stats_anio;
         DROP TABLE IF EXISTS stats_ccaa;
         DROP TABLE IF EXISTS stats_organismo;
@@ -738,66 +862,84 @@ def create_schema(connection: sqlite3.Connection) -> None:
         DROP TABLE IF EXISTS stats_tipo;
         DROP TABLE IF EXISTS stats_top_beneficiario;
         DROP TABLE IF EXISTS facet_organismo;
-        DROP TABLE IF EXISTS conv_fts;
-        DROP TABLE IF EXISTS ben_fts;
 
         CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
 
-        CREATE TABLE convocatorias (
+        CREATE TABLE lut_organismo (
+          id INTEGER PRIMARY KEY,
+          administracion TEXT NOT NULL,
+          departamento TEXT NOT NULL,
+          organo TEXT NOT NULL,
+          organismo TEXT NOT NULL,
+          organismo_norm TEXT NOT NULL,
+          UNIQUE (administracion, departamento, organo)
+        );
+        CREATE INDEX idx_lut_org_norm ON lut_organismo(organismo_norm);
+
+        CREATE TABLE lut_ccaa (
+          id INTEGER PRIMARY KEY,
+          nombre TEXT NOT NULL UNIQUE
+        );
+        CREATE TABLE lut_sector (
+          id INTEGER PRIMARY KEY,
+          nombre TEXT NOT NULL UNIQUE
+        );
+        CREATE TABLE lut_tipo (
+          id INTEGER PRIMARY KEY,
+          nombre TEXT NOT NULL UNIQUE
+        );
+        CREATE TABLE lut_instrumento (
+          id INTEGER PRIMARY KEY,
+          nombre TEXT NOT NULL,
+          slug TEXT NOT NULL UNIQUE
+        );
+        CREATE TABLE lut_persona (
+          id INTEGER PRIMARY KEY,
+          ben_key TEXT NOT NULL UNIQUE,
+          nif TEXT NOT NULL,
+          nombre TEXT NOT NULL,
+          nombre_norm TEXT NOT NULL,
+          tipo TEXT NOT NULL
+        );
+        CREATE INDEX idx_lut_persona_nif ON lut_persona(nif);
+
+        CREATE TABLE convocatoria (
           id INTEGER PRIMARY KEY,
           codigo_bdns TEXT,
           mrr INTEGER NOT NULL,
-          administracion TEXT,
-          departamento TEXT,
-          organo TEXT,
-          organismo TEXT,
-          organismo_norm TEXT,
+          organismo_id INTEGER NOT NULL,
           fecha TEXT,
           anio INTEGER,
           titulo TEXT,
           titulo_cooficial TEXT,
           url_bases TEXT,
-          ccaa TEXT,
-          sector TEXT,
+          ccaa_id INTEGER NOT NULL,
+          sector_id INTEGER NOT NULL,
           n_concesiones INTEGER NOT NULL DEFAULT 0,
           importe_total REAL NOT NULL DEFAULT 0
         );
 
-        CREATE TABLE concesiones (
+        CREATE TABLE concesion (
           id INTEGER PRIMARY KEY,
           id_convocatoria INTEGER,
-          codigo_bdns TEXT,
-          administracion TEXT,
-          departamento TEXT,
-          organo TEXT,
-          organismo TEXT,
-          organismo_norm TEXT,
-          titulo TEXT,
-          url_bases TEXT,
+          organismo_id INTEGER NOT NULL,
           aplicacion TEXT,
           fecha TEXT,
           anio INTEGER,
-          nif TEXT,
-          beneficiario_nombre TEXT,
-          nombre_norm TEXT,
-          tipo_beneficiario TEXT,
+          persona_id INTEGER NOT NULL,
+          tipo_id INTEGER NOT NULL,
           importe REAL,
-          instrumento TEXT,
-          instrumento_slug TEXT,
+          instrumento_id INTEGER NOT NULL,
           ayuda_equivalente REAL,
-          ccaa TEXT,
-          sector TEXT,
-          ben_key TEXT,
+          ccaa_id INTEGER NOT NULL,
+          sector_id INTEGER NOT NULL,
           beneficiario_id INTEGER
         );
 
-        CREATE TABLE beneficiarios (
+        CREATE TABLE beneficiario (
           id INTEGER PRIMARY KEY,
-          ben_key TEXT UNIQUE,
-          nif TEXT,
-          nombre TEXT,
-          nombre_norm TEXT,
-          tipo TEXT,
+          persona_id INTEGER NOT NULL UNIQUE,
+          tipo_id INTEGER NOT NULL,
           n_concesiones INTEGER,
           importe_total REAL
         );
@@ -823,6 +965,79 @@ def create_schema(connection: sqlite3.Connection) -> None:
           n INTEGER,
           importe REAL
         );
+
+        CREATE VIEW convocatorias AS
+        SELECT
+          c.id,
+          c.codigo_bdns,
+          c.mrr,
+          o.administracion,
+          o.departamento,
+          o.organo,
+          o.organismo,
+          o.organismo_norm,
+          c.fecha,
+          c.anio,
+          c.titulo,
+          c.titulo_cooficial,
+          c.url_bases,
+          ca.nombre AS ccaa,
+          s.nombre AS sector,
+          c.n_concesiones,
+          c.importe_total
+        FROM convocatoria c
+        JOIN lut_organismo o ON o.id = c.organismo_id
+        JOIN lut_ccaa ca ON ca.id = c.ccaa_id
+        JOIN lut_sector s ON s.id = c.sector_id;
+
+        CREATE VIEW concesiones AS
+        SELECT
+          c.id,
+          c.id_convocatoria,
+          COALESCE(cv.codigo_bdns, '') AS codigo_bdns,
+          o.administracion,
+          o.departamento,
+          o.organo,
+          o.organismo,
+          o.organismo_norm,
+          COALESCE(cv.titulo, '') AS titulo,
+          COALESCE(cv.url_bases, '') AS url_bases,
+          c.aplicacion,
+          c.fecha,
+          c.anio,
+          p.nif,
+          p.nombre AS beneficiario_nombre,
+          p.nombre_norm,
+          t.nombre AS tipo_beneficiario,
+          c.importe,
+          i.nombre AS instrumento,
+          i.slug AS instrumento_slug,
+          c.ayuda_equivalente,
+          ca.nombre AS ccaa,
+          s.nombre AS sector,
+          p.ben_key,
+          c.beneficiario_id
+        FROM concesion c
+        JOIN lut_organismo o ON o.id = c.organismo_id
+        JOIN lut_persona p ON p.id = c.persona_id
+        JOIN lut_tipo t ON t.id = c.tipo_id
+        JOIN lut_instrumento i ON i.id = c.instrumento_id
+        JOIN lut_ccaa ca ON ca.id = c.ccaa_id
+        JOIN lut_sector s ON s.id = c.sector_id
+        LEFT JOIN convocatoria cv ON cv.id = c.id_convocatoria;
+
+        CREATE VIEW beneficiarios AS
+        SELECT
+          b.id,
+          p.ben_key,
+          p.nif,
+          p.nombre,
+          p.nombre_norm,
+          p.tipo,
+          b.n_concesiones,
+          b.importe_total
+        FROM beneficiario b
+        JOIN lut_persona p ON p.id = b.persona_id;
 
         -- External content: the inverted index stays, the document text does not.
         -- The loader writes the folded strings the search box already queries.
@@ -850,13 +1065,12 @@ def create_schema(connection: sqlite3.Connection) -> None:
     )
 
 
-def load_convocatorias(connection: sqlite3.Connection, geo: Geo) -> int:
+def load_convocatorias(connection: sqlite3.Connection, geo: Geo, catalog: Catalog) -> int:
     sql = """
-        INSERT INTO convocatorias (
-          id, codigo_bdns, mrr, administracion, departamento, organo,
-          organismo, organismo_norm, fecha, anio, titulo, titulo_cooficial,
-          url_bases, ccaa, sector
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        INSERT INTO convocatoria (
+          id, codigo_bdns, mrr, organismo_id, fecha, anio, titulo, titulo_cooficial,
+          url_bases, ccaa_id, sector_id
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
     """
     fts_sql = "INSERT INTO conv_fts(rowid, titulo, organismo, codigo_bdns) VALUES (?,?,?,?)"
     path = RAW_DIR / "convocatorias.csv.gz"
@@ -889,26 +1103,25 @@ def load_convocatorias(connection: sqlite3.Connection, geo: Geo) -> int:
             mrr = 1 if fold(row[2]) == "SI" else 0
             ccaa = geo.locate(administracion, departamento)
             sector = classify_sector(titulo_norm)
+            codigo = clip(row[1], 40)
             batch.append(
                 (
                     row_id,
-                    clip(row[1], 40),
+                    codigo,
                     mrr,
-                    administracion,
-                    departamento,
-                    organo,
-                    organismo,
-                    organismo_norm,
+                    catalog.organismo_id(
+                        connection, administracion, departamento, organo, organismo, organismo_norm
+                    ),
                     fecha,
                     anio,
                     titulo,
                     cooficial,
                     url,
-                    ccaa,
-                    sector,
+                    catalog.ccaa_id(connection, ccaa),
+                    catalog.sector_id(connection, sector),
                 )
             )
-            fts_batch.append((row_id, titulo_norm, organismo_norm, clip(row[1], 40)))
+            fts_batch.append((row_id, titulo_norm, organismo_norm, codigo))
             if len(batch) >= BATCH:
                 connection.executemany(sql, batch)
                 connection.executemany(fts_sql, fts_batch)
@@ -927,14 +1140,13 @@ def load_convocatorias(connection: sqlite3.Connection, geo: Geo) -> int:
     return inserted
 
 
-def load_concesiones(connection: sqlite3.Connection, geo: Geo) -> int:
+def load_concesiones(connection: sqlite3.Connection, geo: Geo, catalog: Catalog) -> int:
     sql = """
-        INSERT OR REPLACE INTO concesiones (
-          id, id_convocatoria, codigo_bdns, administracion, departamento, organo,
-          organismo, organismo_norm, titulo, url_bases, aplicacion, fecha, anio,
-          nif, beneficiario_nombre, nombre_norm, tipo_beneficiario, importe,
-          instrumento, instrumento_slug, ayuda_equivalente, ccaa, sector, ben_key
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        INSERT OR REPLACE INTO concesion (
+          id, id_convocatoria, organismo_id, aplicacion, fecha, anio,
+          persona_id, tipo_id, importe, instrumento_id, ayuda_equivalente,
+          ccaa_id, sector_id
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
     """
     inserted = 0
     skipped = 0
@@ -962,32 +1174,29 @@ def load_concesiones(connection: sqlite3.Connection, geo: Geo) -> int:
                 anio = int(fecha[:4]) if fecha else None
                 nif, nombre_norm, display, tipo, ben_key = split_beneficiario(row[9])
                 instrumento = clean_instrumento(row[11])
+                slug = instrumento_slug(row[11])
                 batch.append(
                     (
                         row_id,
                         id_convocatoria,
-                        clip(row[14], 40) if len(row) > 14 else "",
-                        administracion,
-                        departamento,
-                        organo,
-                        organismo,
-                        fold(organismo),
-                        titulo,
-                        clip(row[6], 1000),
+                        catalog.organismo_id(
+                            connection,
+                            administracion,
+                            departamento,
+                            organo,
+                            organismo,
+                            fold(organismo),
+                        ),
                         clip(row[7], 200),
                         fecha,
                         anio,
-                        nif,
-                        display,
-                        nombre_norm,
-                        tipo,
+                        catalog.persona_id(connection, nif, display, nombre_norm, tipo, ben_key),
+                        catalog.tipo_id(connection, tipo),
                         parse_amount(row[10]),
-                        instrumento,
-                        instrumento_slug(row[11]),
+                        catalog.instrumento_id(connection, instrumento, slug),
                         parse_amount(row[12]) if len(row) > 12 else None,
-                        geo.locate(administracion, departamento),
-                        classify_sector(fold(titulo)),
-                        ben_key,
+                        catalog.ccaa_id(connection, geo.locate(administracion, departamento)),
+                        catalog.sector_id(connection, classify_sector(fold(titulo))),
                     )
                 )
                 if len(batch) >= BATCH:
@@ -1012,25 +1221,24 @@ def create_indexes(connection: sqlite3.Connection) -> None:
     log("Creando índices")
     connection.executescript(
         """
-        CREATE INDEX idx_conv_fecha ON convocatorias(fecha DESC, id);
-        CREATE INDEX idx_conv_codigo ON convocatorias(codigo_bdns);
-        CREATE INDEX idx_conv_ccaa_fecha ON convocatorias(ccaa, fecha DESC);
-        CREATE INDEX idx_conv_sector_fecha ON convocatorias(sector, fecha DESC);
-        CREATE INDEX idx_conv_org ON convocatorias(organismo_norm, fecha DESC);
-        CREATE INDEX idx_conv_anio ON convocatorias(anio, fecha DESC);
-        CREATE INDEX idx_conv_importe ON convocatorias(importe_total DESC);
+        CREATE INDEX idx_conv_fecha ON convocatoria(fecha DESC, id);
+        CREATE INDEX idx_conv_codigo ON convocatoria(codigo_bdns);
+        CREATE INDEX idx_conv_ccaa_fecha ON convocatoria(ccaa_id, fecha DESC);
+        CREATE INDEX idx_conv_sector_fecha ON convocatoria(sector_id, fecha DESC);
+        CREATE INDEX idx_conv_org ON convocatoria(organismo_id, fecha DESC);
+        CREATE INDEX idx_conv_anio ON convocatoria(anio, fecha DESC);
+        CREATE INDEX idx_conv_importe ON convocatoria(importe_total DESC);
 
-        CREATE INDEX idx_con_fecha ON concesiones(fecha DESC, id);
-        CREATE INDEX idx_con_ccaa_fecha ON concesiones(ccaa, fecha DESC);
-        CREATE INDEX idx_con_sector_fecha ON concesiones(sector, fecha DESC);
-        CREATE INDEX idx_con_tipo_fecha ON concesiones(tipo_beneficiario, fecha DESC);
-        CREATE INDEX idx_con_inst_fecha ON concesiones(instrumento_slug, fecha DESC);
-        CREATE INDEX idx_con_org_fecha ON concesiones(organismo_norm, fecha DESC);
-        CREATE INDEX idx_con_anio ON concesiones(anio, fecha DESC);
-        CREATE INDEX idx_con_importe ON concesiones(importe DESC);
-        CREATE INDEX idx_con_conv ON concesiones(id_convocatoria, fecha DESC);
-        CREATE INDEX idx_con_benkey ON concesiones(ben_key);
-        CREATE INDEX idx_con_codigo ON concesiones(codigo_bdns);
+        CREATE INDEX idx_con_fecha ON concesion(fecha DESC, id);
+        CREATE INDEX idx_con_ccaa_fecha ON concesion(ccaa_id, fecha DESC);
+        CREATE INDEX idx_con_sector_fecha ON concesion(sector_id, fecha DESC);
+        CREATE INDEX idx_con_tipo_fecha ON concesion(tipo_id, fecha DESC);
+        CREATE INDEX idx_con_inst_fecha ON concesion(instrumento_id, fecha DESC);
+        CREATE INDEX idx_con_org_fecha ON concesion(organismo_id, fecha DESC);
+        CREATE INDEX idx_con_anio ON concesion(anio, fecha DESC);
+        CREATE INDEX idx_con_importe ON concesion(importe DESC);
+        CREATE INDEX idx_con_conv ON concesion(id_convocatoria, fecha DESC);
+        CREATE INDEX idx_con_persona ON concesion(persona_id, fecha DESC);
         """
     )
 
@@ -1039,38 +1247,35 @@ def build_beneficiarios(connection: sqlite3.Connection) -> None:
     log("Agregando beneficiarios")
     connection.execute(
         """
-        INSERT INTO beneficiarios (
-          ben_key, nif, nombre, nombre_norm, tipo, n_concesiones, importe_total
-        )
+        INSERT INTO beneficiario (persona_id, tipo_id, n_concesiones, importe_total)
         SELECT
-          ben_key,
-          NULLIF(MAX(nif), ''),
-          MIN(beneficiario_nombre),
-          MIN(nombre_norm),
-          MIN(tipo_beneficiario),
+          c.persona_id,
+          (SELECT id FROM lut_tipo WHERE nombre = p.tipo),
           COUNT(*),
-          COALESCE(SUM(importe), 0)
-        FROM concesiones
-        GROUP BY ben_key
+          COALESCE(SUM(c.importe), 0)
+        FROM concesion c
+        JOIN lut_persona p ON p.id = c.persona_id
+        GROUP BY c.persona_id
         """
     )
     connection.execute(
         """
-        UPDATE concesiones
-        SET beneficiario_id = beneficiarios.id
-        FROM beneficiarios
-        WHERE concesiones.ben_key = beneficiarios.ben_key
+        UPDATE concesion
+        SET beneficiario_id = beneficiario.id
+        FROM beneficiario
+        WHERE concesion.persona_id = beneficiario.persona_id
         """
     )
-    connection.execute("CREATE INDEX idx_con_beneficiario ON concesiones(beneficiario_id, fecha DESC)")
-    connection.execute("CREATE INDEX idx_ben_importe ON beneficiarios(importe_total DESC)")
-    connection.execute("CREATE INDEX idx_ben_tipo ON beneficiarios(tipo, importe_total DESC)")
-    connection.execute("CREATE INDEX idx_ben_nif ON beneficiarios(nif)")
+    connection.execute("CREATE INDEX idx_con_beneficiario ON concesion(beneficiario_id, fecha DESC)")
+    connection.execute("CREATE INDEX idx_ben_importe ON beneficiario(importe_total DESC)")
+    connection.execute("CREATE INDEX idx_ben_tipo ON beneficiario(tipo_id, importe_total DESC)")
     log("Índice de búsqueda de beneficiarios")
     connection.execute(
         """
         INSERT INTO ben_fts(rowid, nombre, nif)
-        SELECT id, nombre_norm, IFNULL(nif, '') FROM beneficiarios
+        SELECT b.id, p.nombre_norm, IFNULL(p.nif, '')
+        FROM beneficiario b
+        JOIN lut_persona p ON p.id = b.persona_id
         """
     )
 
@@ -1079,16 +1284,16 @@ def build_stats(connection: sqlite3.Connection) -> None:
     log("Precalculando el panel")
     connection.execute(
         """
-        UPDATE convocatorias
+        UPDATE convocatoria
         SET n_concesiones = agg.n,
             importe_total = agg.importe
         FROM (
           SELECT id_convocatoria AS id, COUNT(*) AS n, COALESCE(SUM(importe), 0) AS importe
-          FROM concesiones
+          FROM concesion
           WHERE id_convocatoria IS NOT NULL
           GROUP BY id_convocatoria
         ) AS agg
-        WHERE convocatorias.id = agg.id
+        WHERE convocatoria.id = agg.id
         """
     )
     connection.executescript(
@@ -1251,9 +1456,10 @@ def build() -> None:
     connection.execute("PRAGMA cache_size = -200000")
     try:
         create_schema(connection)
-        load_convocatorias(connection, geo)
+        catalog = Catalog()
+        load_convocatorias(connection, geo, catalog)
         connection.commit()
-        load_concesiones(connection, geo)
+        load_concesiones(connection, geo, catalog)
         create_indexes(connection)
         connection.commit()
         build_beneficiarios(connection)
@@ -1280,26 +1486,46 @@ def relabel_unmapped() -> None:
     connection = sqlite3.connect(DB_PATH)
     try:
         changed = 0
-        for table in ("convocatorias", "concesiones"):
+        ccaa_ids: dict[str, int] = {
+            nombre: row_id
+            for row_id, nombre in connection.execute("SELECT id, nombre FROM lut_ccaa")
+        }
+
+        def ccaa_key(nombre: str) -> int:
+            found = ccaa_ids.get(nombre)
+            if found is not None:
+                return found
+            cursor = connection.execute("INSERT INTO lut_ccaa (nombre) VALUES (?)", (nombre,))
+            found = int(cursor.lastrowid)
+            ccaa_ids[nombre] = found
+            return found
+
+        for table in ("convocatoria", "concesion"):
             rows = connection.execute(
-                f"SELECT id, administracion, departamento FROM {table} WHERE ccaa = ?",
+                f"""
+                SELECT t.id, o.administracion, o.departamento
+                FROM {table} t
+                JOIN lut_organismo o ON o.id = t.organismo_id
+                JOIN lut_ccaa ca ON ca.id = t.ccaa_id
+                WHERE ca.nombre = ?
+                """,
                 (UNMAPPED,),
             )
-            updates: list[tuple[str, int]] = []
+            updates: list[tuple[int, int]] = []
             for row_id, administracion, departamento in rows:
                 ccaa = geo.locate(administracion or "", departamento or "")
                 if ccaa == UNMAPPED:
                     continue
-                updates.append((ccaa, row_id))
+                updates.append((ccaa_key(ccaa), row_id))
                 if len(updates) >= 5000:
                     connection.executemany(
-                        f"UPDATE {table} SET ccaa = ? WHERE id = ?",
+                        f"UPDATE {table} SET ccaa_id = ? WHERE id = ?",
                         updates,
                     )
                     changed += len(updates)
                     updates.clear()
             if updates:
-                connection.executemany(f"UPDATE {table} SET ccaa = ? WHERE id = ?", updates)
+                connection.executemany(f"UPDATE {table} SET ccaa_id = ? WHERE id = ?", updates)
                 changed += len(updates)
             log(f"{table}: filas reetiquetadas en este pase, acumulado {changed}")
         connection.executescript(
