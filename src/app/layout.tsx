@@ -1,20 +1,7 @@
 import type { Metadata } from "next";
-import { Fraunces, Source_Sans_3 } from "next/font/google";
 import { Providers } from "@/components/providers";
 import { SiteFrame } from "@/components/site-frame";
 import "./globals.css";
-
-const sans = Source_Sans_3({
-  subsets: ["latin"],
-  variable: "--font-source",
-  display: "swap",
-});
-
-const display = Fraunces({
-  subsets: ["latin"],
-  variable: "--font-fraunces",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: {
@@ -26,13 +13,10 @@ export const metadata: Metadata = {
 };
 
 const RootLayout = ({ children }: { children: React.ReactNode }) => (
-  <html lang="es" className={`${sans.variable} ${display.variable} h-full`} suppressHydrationWarning>
-    <body className="min-h-full font-sans text-ink antialiased">
+  <html lang="es" className="h-full" suppressHydrationWarning>
+    <body className="min-h-full text-ink antialiased">
       <Providers>
-        <a
-          href="#contenido"
-          className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50 focus:rounded-full focus:bg-accent focus:px-4 focus:py-2 focus:text-accent-ink"
-        >
+        <a href="#contenido" className="xp-skip xp-button">
           Saltar al contenido
         </a>
         <SiteFrame>{children}</SiteFrame>

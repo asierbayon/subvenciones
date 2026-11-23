@@ -3,7 +3,7 @@
 import { ThemeProvider } from "next-themes";
 
 export const Providers = ({ children }: { children: React.ReactNode }) => (
-  <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+  <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} disableTransitionOnChange>
     {children}
   </ThemeProvider>
 );
