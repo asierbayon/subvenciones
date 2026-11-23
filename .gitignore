@@ -45,3 +45,9 @@ next-env.d.ts
 /data/*.sqlite
 /data/*.sqlite-*
 /data/build-report.json
+
+# BORME extract (rebuild with python3 pipeline/borme.py). Do not commit the bulletin cache.
+/data/borme/
+
+__pycache__/
+*.pyc

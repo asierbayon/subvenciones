@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AlertBanner } from "@/components/alert-banner";
 import { PageIntro, SetupNeeded } from "@/components/setup-needed";
 import { DatabaseMissingError, getDb, guard } from "@/lib/db";
+import { countBormeAlerts } from "@/lib/registro";
 
 const signals = [
   {
@@ -46,6 +47,18 @@ const signals = [
     text: "Sociedades cuyo administrador coincide con un cargo electo o un alto cargo del organismo que concede la ayuda.",
     table: "alert_vinculo",
   },
+  {
+    href: "/alertas/sociedades",
+    title: "Sociedades recientes",
+    text: "Empresas constituidas poco antes de la ayuda, con capital mínimo, que se extinguen enseguida o cuya subvención es muy grande respecto del capital publicado en el BORME.",
+    table: "alert_borme_sociedad",
+  },
+  {
+    href: "/alertas/registro",
+    title: "Administradores compartidos",
+    text: "Varios beneficiarios del mismo organismo que, según el BORME, comparten administrador, socio único o domicilio social.",
+    table: "alert_borme_vinculo",
+  },
 ];
 
 const signalCount = (
@@ -59,6 +72,8 @@ const signalCount = (
     directa: number | null;
     contratos: number | null;
     vinculo: number | null;
+    sociedad: number | null;
+    registro: number | null;
   },
 ) => {
   if (table === "alert_fraccion") {
@@ -107,6 +122,18 @@ const signalCount = (
     }
     return `${counts.vinculo.toLocaleString("es-ES")} indicadores`;
   }
+  if (table === "alert_borme_sociedad") {
+    if (counts.sociedad === null) {
+      return "Sin calcular";
+    }
+    return `${counts.sociedad.toLocaleString("es-ES")} indicadores`;
+  }
+  if (table === "alert_borme_vinculo") {
+    if (counts.registro === null) {
+      return "Sin calcular";
+    }
+    return `${counts.registro.toLocaleString("es-ES")} indicadores`;
+  }
   return "";
 };
 
@@ -141,7 +168,33 @@ const AlertasPage = async () => {
     const directa = await countTable("SELECT COUNT(*) AS n FROM alert_directa");
     const contratos = await countTable("SELECT COUNT(*) AS n FROM alert_contrato");
     const vinculo = await countTable("SELECT COUNT(*) AS n FROM alert_vinculo");
-    return { fraccion, concentracion, recurrentes, calendario, benford, directa, contratos, vinculo };
+    let sociedad: number | null = null;
+    let registro: number | null = null;
+    try {
+      const borme = await countBormeAlerts();
+      sociedad = borme.sociedad;
+      registro = borme.vinculo;
+    } catch (error) {
+      if (error instanceof DatabaseMissingError) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : "";
+      if (!message.includes("no such table")) {
+        throw error;
+      }
+    }
+    return {
+      fraccion,
+      concentracion,
+      recurrentes,
+      calendario,
+      benford,
+      directa,
+      contratos,
+      vinculo,
+      sociedad,
+      registro,
+    };
   });
   if (counts === "missing") {
     return <SetupNeeded />;

@@ -128,6 +128,74 @@ python3 pipeline/alerts.py directa
 No hay columna de procedimiento ni de reintegro, así que no se fabrica una «concesión directa» oficial. El sustituto cuenta títulos que dicen «concesión directa», «concessió directa» o «nominativ» y ordena los organismos por esa cuota. Es una pista de texto, no el campo que la BDNS usa por dentro.
 
 ```bash
+python3 pipeline/borme.py run
+```
+
+El cruce con el BORME es un paso aparte. `pnpm data` no lo lanza, y el índice se puede construir y consultar sin él. Hace falta el índice ya generado. El script baja los sumarios de la [API de datos abiertos del BOE](https://www.boe.es/datosabiertos/api/api.php) entre el 1 ene 2016 y el 31 dic 2023, lee el XML de la sección primera (actos inscritos) y deja un extracto en `data/borme/` que no se versiona. Por defecto abre 4 descargas en paralelo y espera 0,12 s entre el inicio de cada petición. Si el servidor responde 429, alarga la pausa. El proceso se puede reanudar. La reutilización sigue las [condiciones del BOE](https://www.boe.es/informacion/aviso_legal/index.php): la interfaz cita «Basado en datos de la Agencia Estatal Boletín Oficial del Estado» y enlaza el anuncio.
+
+No se usan los PDF ni libreBORME / bormeparser. Esos proyectos ya parsean el boletín, pero a partir del PDF y con dependencias que no caben en un pipeline de biblioteca estándar. El XML oficial de la sección A, también para los años históricos, basta para constitución, capital, domicilio, nombramientos y disolución.
+
+El BORME identifica a la sociedad por el nombre y la hoja registral. El NIF aparece en muy pocos anuncios. El emparejamiento:
+
+1. Pasa el nombre a mayúsculas, quita tildes y puntuación.
+2. Quita al final la forma social (`SOCIEDAD LIMITADA`, `S.L.`, `S.L.U.`, `S.A.`, …), de modo que el anuncio y la BDNS coincidan aunque escriban la forma distinto.
+3. Si esa clave, en todo el extracto, apunta a una sola hoja y a un solo beneficiario, y el nombre tiene al menos dos palabras distintivas (o una sola palabra larga), la confianza es **alta**.
+4. Si la hoja es única pero el nombre es corto o genérico (`INVERSIONES`, `SERVICIOS`, un topónimo), la confianza es **media**.
+5. Si varias hojas o varios NIF comparten la clave, no se asigna ficha: queda **ambigua**.
+6. Un NIF escrito en el anuncio junto a la etiqueta CIF/NIF desempata: si coincide, la confianza pasa a alta; si contradice al beneficiario, el cruce se descarta.
+
+Las señales de sociedad usan confianza alta o media, y lo dicen en el texto. Los administradores compartidos viven en `/alertas/registro` (la ruta `/alertas/vinculos` es la de cargos públicos). Solo usan confianza alta. El mismo paso escribe `borme_admins` (NIF, nombre y cargo, sin fechas de nombramiento) para ese otro indicador. Una persona entra si el nombre tiene al menos tres tokens; un administrador que es otra sociedad entra por su denominación normalizada. Se dejan fuera las personas que aparecen en más de 20 sociedades y los domicilios compartidos por más de 12: suelen ser homónimos o gestorías.
+
+Reglas, todas sobre subvenciones dinerarias:
+
+- **nueva_capital.** Constitución como mucho 365 días antes de una ayuda de al menos 10.000 €, y capital publicado de hasta 3.100 € (el mínimo legal de 3.000 y los redondeos que salen en el boletín).
+- **nueva_disuelta.** Constitución en esos 365 días, una ayuda de al menos 10.000 €, y disolución, extinción o cierre provisional en los 730 días posteriores a esa ayuda.
+- **importe_capital.** Capital de hasta 3.100 € y una ayuda de al menos 10.000 € y de al menos diez veces ese capital.
+- **disuelta_pronto.** Disolución o extinción en los 540 días posteriores a una ayuda de al menos 10.000 €.
+- **administrador / socio / domicilio.** Dos o más NIF distintos cobran del mismo organismo y publican la misma persona o el mismo domicilio.
+
+`python3 pipeline/borme.py report` imprime las tasas de cruce. `python3 pipeline/borme.py --self-check` prueba el parser con un extracto corto de un anuncio real, sin red.
+
+### Qué salió de un pase 2016-2023
+
+El pase cubre los 2.086 días laborables del 1 ene 2016 al 31 dic 2023 (1.984 con sección primera y 102 sin boletín). Son 4.227.767 anuncios de sociedad y 1.890.203 hojas. El 99,6 % de los anuncios trae hoja registral. Solo 13.211 (el 0,3 %) publican un NIF junto a la etiqueta CIF o NIF: el cruce es, en la práctica, por nombre. El extracto ocupa unos 2,4 GB en `data/borme/borme.sqlite` y no se versiona. El índice de la aplicación, ya con estas tablas, queda en unos 5,4 GB.
+
+De 490.241 sociedades con NIF A, B, C o D y un nombre utilizable:
+
+| Confianza | Sociedades | Cuota |
+| --- | ---: | ---: |
+| Alta | 236.773 | 48,3 % |
+| Media | 38.283 | 7,8 % |
+| Débil, no se usa en las señales | 6.034 | 1,2 % |
+| Ambigua, varias hojas o varios NIF | 9.152 | 1,9 % |
+| Sin anuncio en la ventana | 199.999 | 40,8 % |
+
+La confianza alta o media suma el 56,1 %. El resto son sobre todo sociedades que no publicaron ningún acto entre 2016 y 2023: el BORME de esos años no es el censo histórico del registro.
+
+En una muestra aleatoria de 20 cruces de confianza alta, los 20 nombres normalizados coinciden con el de la hoja. Cuatro anuncios se abrieron además en el XML oficial (constitución con capital de 3.000 €, extinción por fusión, disolución voluntaria) y el texto leído es el de esa sociedad. Eso mide el acierto del emparejamiento por nombre, no descarta un homónimo que no hubiera publicado nada en la ventana.
+
+Indicadores, con el aviso de que no son pruebas:
+
+| Señal | Casos |
+| --- | ---: |
+| Constituida hace poco y capital mínimo | 1.141 |
+| Constituida y cerrada en poco tiempo | 24 |
+| Ayuda grande frente al capital | 3.089 |
+| Cierre poco después de la ayuda | 728 |
+| Mismo administrador | 13.511 |
+| Mismo socio único | 282 |
+| Mismo domicilio | 1.571 |
+
+Ejemplos reales del pase:
+
+- VILLADANGOS INTERMODAL SL (B24725194) se constituye el 6 feb 2019 con 3.000 € y socio único NETWORK STEEL RESOURCES SA. En 2019 cobra del organismo de fomento de Castilla y León. Anuncio `BORME-A-2019-41-24`.
+- FERROATLÁNTICA DE SABÓN SLU y FERROATLÁNTICA DE BOO SLU se constituyen el 13 ago 2019, cobran del Ministerio de Industria y el 13 oct 2021 el BORME publica su extinción por fusión en FERROATLÁNTICA SA (`BORME-A-2021-202-28`).
+- CAMPO ABADIA SL (B42819029) se constituye el 1 feb 2021, cobra del instituto de competitividad de Castilla y León y se extingue el 12 ene 2023 (`BORME-A-2023-8-37`).
+- Doce sociedades distintas cobran de la Consejería de Economía de Madrid y el BORME nombra administrador a GRUPO LARRUMBA HOLDING SL.
+
+Límites que el indicador no resuelve: una extinción puede ser una fusión (el anuncio dice «Disolución. Fusión. Extinción» y aquí cuenta como cierre); el capital de 1 € puede ser una limitada en formación sucesiva, que es legal; el administrador se publica sin DNI, así que un homónimo basta para enlazar dos sociedades; el domicilio de una gestoría concentra empresas que no forman un grupo.
+
+```bash
 python3 pipeline/contratos.py
 ```
 
@@ -254,3 +322,4 @@ Las URL están fijas en `pipeline/build_index.py` y apuntan a `raw.githubusercon
 - Volcado y código del repositorio de origen: Jaime Gómez-Obregón y quienes contribuyeron a [JaimeObregon/subvenciones](https://github.com/JaimeObregon/subvenciones), licencia GPL-3.0.
 - Datos de fondo: Base de Datos Nacional de Subvenciones, Ministerio de Hacienda, [infosubvenciones.es](https://www.infosubvenciones.es).
 - Municipios de apoyo para estimar la comunidad autónoma: relación INE redistribuida por [codeforspain/ds-organizacion-administrativa](https://github.com/codeforspain/ds-organizacion-administrativa), incluida en `pipeline/vendor/municipios.csv`.
+- Anuncios del Registro Mercantil: Agencia Estatal Boletín Oficial del Estado, [API de sumarios del BORME](https://www.boe.es/datosabiertos/api/api.php), reutilizados con las condiciones de la sede electrónica.

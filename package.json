@@ -8,6 +8,7 @@
     "start": "next start -p 43123 -H 0.0.0.0",
     "data": "python3 pipeline/build_index.py",
     "alerts": "python3 pipeline/alerts.py",
+    "borme": "python3 pipeline/borme.py run",
     "contratos": "python3 pipeline/contratos.py",
     "politicos": "python3 pipeline/politicos.py",
     "vinculos": "python3 pipeline/vinculos.py",
