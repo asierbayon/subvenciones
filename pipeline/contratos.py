@@ -580,6 +580,21 @@ class Catalog:
         )
 
 
+def notice_day(status: ET.Element, updated: str) -> tuple[str, str]:
+    """Fecha de publicación cuando el anuncio no trae AwardDate.
+
+    En las plataformas agregadas la adjudicación suele no llevar fecha. Se usa
+    la publicación más reciente del anuncio, no el plazo de presentación.
+    """
+    published = [day for day in (parse_day(text_of(node)) for node in status.iter("IssueDate")) if day]
+    if published:
+        return max(published), "publicacion"
+    fallback = parse_day((updated or "")[:10])
+    if fallback:
+        return fallback, "publicacion"
+    return "", ""
+
+
 def procedure_name(code: str, fuente: str) -> str:
     if code in PROCEDURES:
         return PROCEDURES[code]
@@ -649,6 +664,9 @@ def parse_entry(blob: bytes, fuente: str) -> list[dict]:
         if result_code not in AWARDED:
             continue
         day = parse_day(text_of(result.find("AwardDate")))
+        fecha_tipo = "adjudicacion"
+        if day == "":
+            day, fecha_tipo = notice_day(status, updated)
         if day == "":
             continue
         lote = ""
@@ -699,6 +717,7 @@ def parse_entry(blob: bytes, fuente: str) -> list[dict]:
                         "padres": "|".join(parents),
                         "tipo_poder": tipo,
                         "fecha": day,
+                        "fecha_tipo": fecha_tipo,
                         "anio": int(day[:4]),
                         "importe": amount,
                         "procedimiento": procedure,
@@ -720,7 +739,7 @@ def match_organismo(
     organismo: str,
     administracion: str,
     contract: dict,
-    unique_dir3: dict[str, str],
+    dir3_index: tuple[dict[str, set[str]], dict[str, set[str]]] | None = None,
 ) -> tuple[str, str, str] | None:
     """Devuelve nivel, vía y detalle, o None si no hay cruce de organismo.
 
@@ -734,9 +753,14 @@ def match_organismo(
     party = contract.get("organo_canon") or ""
     parents = [item for item in (contract.get("padres") or "").split("|") if item and not is_bucket(item)]
     code = contract.get("dir3") or ""
-    if grant and code:
-        mapped = unique_dir3.get(grant)
-        if mapped and mapped == code:
+    canon_codes: dict[str, set[str]] = {}
+    code_canons: dict[str, set[str]] = {}
+    if dir3_index:
+        canon_codes, code_canons = dir3_index
+    if grant and code and canon_codes.get(grant) == {code}:
+        known = code_canons.get(code) or set()
+        same_label = grant == party
+        if grant in known and (same_label or shares_distinctive_token(grant, party)):
             return ("mismo_organo", "dir3", code)
     if grant and grant == party:
         return ("mismo_organo", "nombre", grant)
@@ -780,8 +804,8 @@ def should_emit(nivel: str, menor: int, sin_concurrencia: int) -> bool:
 def via_texto(via: str, detalle: str) -> str:
     if via == "dir3":
         return (
-            f"El nombre del organismo en la BDNS coincide con un único código DIR3 ({detalle}), "
-            "que es el del órgano de contratación de este anuncio."
+            f"El nombre del organismo en la BDNS apunta a un único código DIR3 ({detalle}), el de este anuncio, "
+            "y los dos rótulos comparten una palabra que no es genérica."
         )
     if via == "nombre":
         return "El nombre normalizado del organismo que concede y el del órgano de contratación coinciden."
@@ -816,6 +840,10 @@ def build_motivo(alert: dict) -> str:
         ),
         via_texto(alert["via"], alert["detalle"]),
     ]
+    if alert.get("fecha_tipo") == "publicacion":
+        pieces.append(
+            "Esa fecha es la de publicación del anuncio: este canal no trae la fecha de adjudicación."
+        )
     if alert["menor"]:
         pieces.append("El anuncio está clasificado como contrato menor.")
     elif alert["emergencia"]:
@@ -866,7 +894,8 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
           fuente TEXT NOT NULL,
           updated TEXT NOT NULL,
           entrada_id TEXT NOT NULL,
-          PRIMARY KEY (expediente, lote, nif)
+          fecha_tipo TEXT NOT NULL DEFAULT 'adjudicacion',
+          PRIMARY KEY (expediente, lote, nif, fuente)
         );
         CREATE TABLE IF NOT EXISTS placsp_dir3 (
           dir3 TEXT NOT NULL,
@@ -893,6 +922,60 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
           key TEXT PRIMARY KEY,
           value TEXT NOT NULL
         );
+        """
+    )
+
+
+def migrate_contracts(connection: sqlite3.Connection) -> None:
+    row = connection.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'placsp_contrato'"
+    ).fetchone()
+    if row is None:
+        return
+    ddl = row[0] or ""
+    if "fecha_tipo" in ddl and "nif, fuente" in ddl:
+        return
+    log("Separando los contratos por canal y guardando el tipo de fecha")
+    connection.executescript(
+        """
+        CREATE TABLE placsp_contrato_new (
+          expediente TEXT NOT NULL,
+          lote TEXT NOT NULL,
+          nif TEXT NOT NULL,
+          adjudicatario TEXT NOT NULL,
+          organo TEXT NOT NULL,
+          organo_canon TEXT NOT NULL,
+          dir3 TEXT NOT NULL,
+          padres TEXT NOT NULL,
+          tipo_poder TEXT NOT NULL,
+          fecha TEXT NOT NULL,
+          anio INTEGER NOT NULL,
+          importe REAL,
+          procedimiento TEXT NOT NULL,
+          procedimiento_nombre TEXT NOT NULL,
+          menor INTEGER NOT NULL,
+          sin_concurrencia INTEGER NOT NULL,
+          emergencia INTEGER NOT NULL,
+          titulo TEXT NOT NULL,
+          url TEXT NOT NULL,
+          fuente TEXT NOT NULL,
+          updated TEXT NOT NULL,
+          entrada_id TEXT NOT NULL,
+          fecha_tipo TEXT NOT NULL DEFAULT 'adjudicacion',
+          PRIMARY KEY (expediente, lote, nif, fuente)
+        );
+        INSERT INTO placsp_contrato_new (
+          expediente, lote, nif, adjudicatario, organo, organo_canon, dir3, padres, tipo_poder,
+          fecha, anio, importe, procedimiento, procedimiento_nombre, menor, sin_concurrencia,
+          emergencia, titulo, url, fuente, updated, entrada_id, fecha_tipo
+        )
+        SELECT
+          expediente, lote, nif, adjudicatario, organo, organo_canon, dir3, padres, tipo_poder,
+          fecha, anio, importe, procedimiento, procedimiento_nombre, menor, sin_concurrencia,
+          emergencia, titulo, url, fuente, updated, entrada_id, 'adjudicacion'
+        FROM placsp_contrato;
+        DROP TABLE placsp_contrato;
+        ALTER TABLE placsp_contrato_new RENAME TO placsp_contrato;
         """
     )
 
@@ -981,9 +1064,9 @@ def insert_contracts(connection: sqlite3.Connection, rows: list[dict]) -> None:
         INSERT INTO placsp_contrato (
           expediente, lote, nif, adjudicatario, organo, organo_canon, dir3, padres, tipo_poder,
           fecha, anio, importe, procedimiento, procedimiento_nombre, menor, sin_concurrencia,
-          emergencia, titulo, url, fuente, updated, entrada_id
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        ON CONFLICT(expediente, lote, nif) DO UPDATE SET
+          emergencia, titulo, url, fuente, updated, entrada_id, fecha_tipo
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(expediente, lote, nif, fuente) DO UPDATE SET
           adjudicatario = excluded.adjudicatario,
           organo = excluded.organo,
           organo_canon = excluded.organo_canon,
@@ -1002,8 +1085,12 @@ def insert_contracts(connection: sqlite3.Connection, rows: list[dict]) -> None:
           url = excluded.url,
           fuente = excluded.fuente,
           updated = excluded.updated,
-          entrada_id = excluded.entrada_id
+          entrada_id = excluded.entrada_id,
+          fecha_tipo = excluded.fecha_tipo
         WHERE excluded.updated >= placsp_contrato.updated
+          AND NOT (
+            placsp_contrato.fecha_tipo = 'adjudicacion' AND excluded.fecha_tipo = 'publicacion'
+          )
         """,
         [
             (
@@ -1029,6 +1116,7 @@ def insert_contracts(connection: sqlite3.Connection, rows: list[dict]) -> None:
                 row["fuente"],
                 row["updated"],
                 row["entrada_id"],
+                row.get("fecha_tipo") or "adjudicacion",
             )
             for row in rows
         ],
@@ -1101,6 +1189,7 @@ def process_zip(
 
 def ingest(connection: sqlite3.Connection, years: list[int], feeds: list[str], keep_raw: bool) -> None:
     ensure_schema(connection)
+    migrate_contracts(connection)
     done = {(row[0], row[1]) for row in connection.execute("SELECT fuente, anio FROM placsp_zip")}
     nifs = load_nifs(connection)
     catalog = Catalog()
@@ -1121,21 +1210,63 @@ def ingest(connection: sqlite3.Connection, years: list[int], feeds: list[str], k
                 log(f"Borrado {destination.name}")
 
 
-def load_unique_dir3(connection: sqlite3.Connection) -> dict[str, str]:
-    rows = connection.execute(
-        """
-        SELECT canon, MIN(dir3) AS dir3
-        FROM placsp_dir3
-        GROUP BY canon
-        HAVING COUNT(DISTINCT dir3) = 1
-        """
-    )
-    return {canon_name: code for canon_name, code in rows}
+GENERIC_TOKENS = {
+    "MINISTERIO",
+    "DIRECCION",
+    "GENERAL",
+    "SECRETARIA",
+    "SUBSECRETARIA",
+    "INSTITUTO",
+    "NACIONAL",
+    "AYUNTAMIENTO",
+    "CONSEJERIA",
+    "DEPARTAMENTO",
+    "SERVICIO",
+    "PUBLICO",
+    "PUBLICA",
+    "ESTADO",
+    "ESPANA",
+    "ADMINISTRACION",
+    "DELEGACION",
+    "PRESIDENCIA",
+    "JUNTA",
+    "GOBIERNO",
+    "CONCEJALIA",
+    "ALCALDIA",
+    "ORGANISMO",
+    "AUTONOMO",
+    "AGENCIA",
+    "ESTATAL",
+}
+
+
+def distinctive_tokens(name: str) -> set[str]:
+    return {token for token in name.split() if len(token) >= 5 and token not in GENERIC_TOKENS}
+
+
+def shares_distinctive_token(left: str, right: str) -> bool:
+    return bool(distinctive_tokens(left) & distinctive_tokens(right))
+
+
+def load_dir3_index(connection: sqlite3.Connection) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+    """Nombre → códigos, y código → nombres.
+
+    Un código que la PLACSP reutiliza en órganos distintos no sirve para
+    identificar. Solo se usa si el nombre de la ayuda apunta a un único código
+    y, cuando el rótulo del contrato es otro, ambos comparten una palabra propia.
+    """
+    canon_codes: dict[str, set[str]] = {}
+    code_canons: dict[str, set[str]] = {}
+    for code, folded in connection.execute("SELECT dir3, canon FROM placsp_dir3"):
+        canon_codes.setdefault(folded, set()).add(code)
+        code_canons.setdefault(code, set()).add(folded)
+    return canon_codes, code_canons
 
 
 def rebuild_alerts(connection: sqlite3.Connection) -> None:
     log("Calculando indicadores de cruce")
     ensure_schema(connection)
+    migrate_contracts(connection)
     connection.executescript(
         """
         DROP TABLE IF EXISTS alert_contrato_item;
@@ -1184,13 +1315,14 @@ def rebuild_alerts(connection: sqlite3.Connection) -> None:
         );
         """
     )
-    unique_dir3 = load_unique_dir3(connection)
-    log(f"Nombres de órgano con un solo DIR3: {len(unique_dir3)}")
+    dir3_index = load_dir3_index(connection)
+    clean_codes = sum(1 for codes in dir3_index[0].values() if len(codes) == 1)
+    log(f"Nombres con un solo DIR3: {clean_codes}")
     cursor = connection.execute(
         """
         SELECT expediente, lote, nif, adjudicatario, organo, organo_canon, dir3, padres, tipo_poder,
                fecha, anio, importe, procedimiento, procedimiento_nombre, menor, sin_concurrencia,
-               emergencia, titulo, url, fuente
+               emergencia, titulo, url, fuente, fecha_tipo
         FROM placsp_contrato
         ORDER BY nif, fecha
         """
@@ -1268,6 +1400,7 @@ def rebuild_alerts(connection: sqlite3.Connection) -> None:
             "emergencia": contract[16],
             "sin_concurrencia": contract[15],
             "dias": closest,
+            "fecha_tipo": contract[20] if len(contract) > 20 else "adjudicacion",
         }
         motivo = build_motivo(alert)
         alerts.append(
@@ -1332,7 +1465,7 @@ def rebuild_alerts(connection: sqlite3.Connection) -> None:
                 "organo_canon": contract[5],
                 "dir3": contract[6],
                 "padres": contract[7],
-            }, unique_dir3)
+            }, dir3_index)
             if match is None:
                 continue
             if not should_emit(match[0], contract[14], contract[15]):
@@ -1359,7 +1492,8 @@ def rebuild_alerts(connection: sqlite3.Connection) -> None:
 
 def write_coverage(connection: sqlite3.Connection) -> None:
     log("Midiendo cobertura del emparejamiento")
-    unique = load_unique_dir3(connection)
+    canon_codes, _code_canons = load_dir3_index(connection)
+    unique = {name: next(iter(codes)) for name, codes in canon_codes.items() if len(codes) == 1}
     ambiguous = {
         row[0]
         for row in connection.execute(
@@ -1540,14 +1674,24 @@ def self_check() -> None:
     assert should_emit("misma_administracion", 1, 1)
     assert not should_emit("misma_administracion", 0, 0)
     assert should_emit("mismo_organo", 0, 0)
-    unique = {canon("Dirección General del Patrimonio del Estado"): "E00126603"}
+    patrimonio = canon("Dirección General del Patrimonio del Estado")
+    corto = canon("D.G. del Patrimonio del Estado")
     by_dir3 = match_organismo(
         "Dirección General del Patrimonio del Estado",
         "ESTADO",
-        {"organo_canon": canon("D.G. del Patrimonio del Estado"), "dir3": "E00126603", "padres": ""},
-        unique,
+        {"organo_canon": corto, "dir3": "E00126603", "padres": ""},
+        ({patrimonio: {"E00126603"}}, {"E00126603": {patrimonio, corto}}),
     )
     assert by_dir3 is not None and by_dir3[1] == "dir3"
+    ciencia = canon("Ministerio de Ciencia e Innovación")
+    iac = canon("Dirección del Instituto de Astrofísica de Canarias")
+    dirty = match_organismo(
+        "Ministerio de Ciencia e Innovación",
+        "ESTADO",
+        {"organo_canon": iac, "dir3": "E05071301", "padres": ""},
+        ({ciencia: {"E05071301"}}, {"E05071301": {ciencia, iac}}),
+    )
+    assert dirty is None
     ambiguous = match_organismo(
         "INTERVENCIÓN",
         "MADRID",
@@ -1571,6 +1715,59 @@ def self_check() -> None:
     assert row["procedimiento"] == "6"
     assert row["importe"] == 60
     assert row["fecha"] == "2026-03-09"
+    assert row["fecha_tipo"] == "adjudicacion"
+    aggregated = parse_entry(
+        """<entry>
+          <id>agg-1</id>
+          <updated>2018-06-01T00:00:00+02:00</updated>
+          <link href="https://example.test/aviso?a=1&amp;b=2"/>
+          <ContractFolderStatus>
+            <ContractFolderID>EXP-1</ContractFolderID>
+            <LocatedContractingParty><Party><PartyName><Name>Consejería de Hacienda</Name></PartyName></Party></LocatedContractingParty>
+            <ProcurementProject><Name>Obra rural</Name></ProcurementProject>
+            <TenderingProcess><ProcedureCode>3</ProcedureCode></TenderingProcess>
+            <TenderResult>
+              <ResultCode>8</ResultCode>
+              <WinningParty>
+                <PartyIdentification><ID schemeName="NIF">B-86965936</ID></PartyIdentification>
+                <PartyName><Name>ACME</Name></PartyName>
+              </WinningParty>
+            </TenderResult>
+            <IssueDate>2018-04-01</IssueDate>
+            <IssueDate>2018-05-02</IssueDate>
+          </ContractFolderStatus>
+        </entry>""".encode(),
+        "agregadas",
+    )
+    assert len(aggregated) == 1
+    assert aggregated[0]["nif"] == "B86965936"
+    assert aggregated[0]["fecha"] == "2018-05-02"
+    assert aggregated[0]["fecha_tipo"] == "publicacion"
+    assert aggregated[0]["sin_concurrencia"] == 1
+    assert "publicación del anuncio" in build_motivo(
+        {
+            "nombre": "ACME",
+            "nif": "B86965936",
+            "n_concesiones": 1,
+            "organismo": "Consejería de Hacienda",
+            "fecha_concesion_min": "2018-05-01",
+            "fecha_concesion_max": "2018-05-01",
+            "importe_concesiones": 10,
+            "fecha_contrato": "2018-05-02",
+            "organo_contrato": "Consejería de Hacienda",
+            "titulo_contrato": "Obra rural",
+            "procedimiento_nombre": "Negociado sin publicidad",
+            "importe_contrato": 10,
+            "expediente": "EXP-1",
+            "via": "nombre",
+            "detalle": "x",
+            "menor": 0,
+            "emergencia": 0,
+            "sin_concurrencia": 1,
+            "dias": 1,
+            "fecha_tipo": "publicacion",
+        }
+    )
     assert "detalle_licitacion" in row["url"]
     assert "&" in row["url"]
     assert row["anio"] == 2026
