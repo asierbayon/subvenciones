@@ -262,28 +262,54 @@ const pushFilter = (
   params.push(value);
 };
 
-const sharedPlaceFilters = (filters: Filters, alias: string) => {
-  const clauses: string[] = [];
-  const params: SQLInputValue[] = [];
-  pushFilter(clauses, params, `${alias}.ccaa = ?`, filters.ccaa || null);
-  pushFilter(clauses, params, `${alias}.sector = ?`, filters.sector || null);
-  pushFilter(clauses, params, `${alias}.organismo_norm LIKE ?`, filters.organismo ? `${fold(filters.organismo)}%` : null);
-  pushFilter(clauses, params, `${alias}.fecha >= ?`, isoDate(filters.desde));
-  pushFilter(clauses, params, `${alias}.fecha <= ?`, isoDate(filters.hasta));
-  pushFilter(clauses, params, `${alias}.importe_total >= ?`, amountParam(filters.importeMin));
-  pushFilter(clauses, params, `${alias}.importe_total <= ?`, amountParam(filters.importeMax));
-  return { clauses, params };
-};
-
 const orderBy = (expr: string, dir: Direction, idExpr: string) =>
   `${expr} ${directionSql(dir)}, ${idExpr} DESC`;
 
-const CONV_SORT: Record<string, string> = {
-  fecha: "c.fecha",
-  titulo: "c.titulo",
-  importe: "c.importe_total",
-  concesiones: "c.n_concesiones",
-  organismo: "c.organismo",
+const emptyPage = <T,>(filters: Filters, pageSize: number): Page<T> => ({
+  rows: [],
+  total: 0,
+  page: filters.page,
+  pageSize,
+});
+
+const labelId = async (table: string, nombre: string) => {
+  const row = await queryGet(`SELECT id FROM ${table} WHERE nombre = ?`, [nombre]);
+  if (!row) {
+    return null;
+  }
+  return asNumber(row.id);
+};
+
+const slugId = async (slug: string) => {
+  const row = await queryGet("SELECT id FROM lut_instrumento WHERE slug = ?", [slug]);
+  if (!row) {
+    return null;
+  }
+  return asNumber(row.id);
+};
+
+const hydrate = async (view: string, ids: number[]) => {
+  if (ids.length === 0) {
+    return [];
+  }
+  const marks = ids.map(() => "?").join(", ");
+  const rows = await queryAll(`SELECT * FROM ${view} WHERE id IN (${marks})`, ids);
+  const byId = new Map(rows.map((row) => [asNumber(row.id), row]));
+  const ordered: Row[] = [];
+  for (const id of ids) {
+    const row = byId.get(id);
+    if (row) {
+      ordered.push(row);
+    }
+  }
+  return ordered;
+};
+
+const whereSql = (clauses: string[]) => {
+  if (clauses.length === 0) {
+    return "";
+  }
+  return `WHERE ${clauses.join(" AND ")}`;
 };
 
 export const searchConvocatorias = async (
@@ -291,37 +317,65 @@ export const searchConvocatorias = async (
   pageSize = PAGE_SIZE,
 ): Promise<Page<Convocatoria>> => {
   const fts = toFts(filters.q);
-  const { clauses, params } = sharedPlaceFilters(filters, "c");
+  const clauses: string[] = [];
+  const params: SQLInputValue[] = [];
+  if (filters.ccaa) {
+    const id = await labelId("lut_ccaa", filters.ccaa);
+    if (id === null) {
+      return emptyPage(filters, pageSize);
+    }
+    clauses.push("c.ccaa_id = ?");
+    params.push(id);
+  }
+  if (filters.sector) {
+    const id = await labelId("lut_sector", filters.sector);
+    if (id === null) {
+      return emptyPage(filters, pageSize);
+    }
+    clauses.push("c.sector_id = ?");
+    params.push(id);
+  }
+  if (filters.organismo) {
+    clauses.push("c.organismo_id IN (SELECT id FROM lut_organismo WHERE organismo_norm LIKE ?)");
+    params.push(`${fold(filters.organismo)}%`);
+  }
+  pushFilter(clauses, params, "c.fecha >= ?", isoDate(filters.desde));
+  pushFilter(clauses, params, "c.fecha <= ?", isoDate(filters.hasta));
+  pushFilter(clauses, params, "c.importe_total >= ?", amountParam(filters.importeMin));
+  pushFilter(clauses, params, "c.importe_total <= ?", amountParam(filters.importeMax));
   if (filters.mrr) {
     clauses.push("c.mrr = 1");
   }
-  let from = "FROM convocatorias c";
+  let from = "FROM convocatoria c";
   if (fts) {
-    from = "FROM convocatorias c JOIN conv_fts ON conv_fts.rowid = c.id";
+    from = "FROM convocatoria c JOIN conv_fts ON conv_fts.rowid = c.id";
     clauses.unshift("conv_fts MATCH ?");
     params.unshift(fts);
   }
-  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-  const sort = CONV_SORT[filters.sort] ?? CONV_SORT.fecha;
-  const unfiltered =
-    !fts &&
-    clauses.length === 0;
+  let sortFrom = from;
+  let sortExpr = "c.fecha";
+  if (filters.sort === "titulo") {
+    sortExpr = "c.titulo";
+  } else if (filters.sort === "importe") {
+    sortExpr = "c.importe_total";
+  } else if (filters.sort === "concesiones") {
+    sortExpr = "c.n_concesiones";
+  } else if (filters.sort === "organismo") {
+    sortExpr = "o.organismo";
+    sortFrom = `${from} JOIN lut_organismo o ON o.id = c.organismo_id`;
+  }
+  const where = whereSql(clauses);
+  const unfiltered = !fts && clauses.length === 0;
   const total = unfiltered
     ? (await getMeta()).nConvocatorias
     : asNumber((await queryGet(`SELECT COUNT(*) AS n ${from} ${where}`, params))?.n ?? 0);
-  const rows = await queryAll(
-    `SELECT c.* ${from} ${where} ORDER BY ${orderBy(sort, filters.dir, "c.id")} LIMIT ? OFFSET ?`,
+  const idRows = await queryAll(
+    `SELECT c.id ${sortFrom} ${where} ORDER BY ${orderBy(sortExpr, filters.dir, "c.id")} LIMIT ? OFFSET ?`,
     [...params, pageSize, (filters.page - 1) * pageSize],
   );
+  const ids = idRows.map((row) => asNumber(row.id));
+  const rows = await hydrate("convocatorias", ids);
   return { rows: rows.map(mapConvocatoria), total, page: filters.page, pageSize };
-};
-
-const CONC_SORT: Record<string, string> = {
-  fecha: "c.fecha",
-  importe: "c.importe",
-  beneficiario: "c.beneficiario_nombre",
-  titulo: "c.titulo",
-  organismo: "c.organismo",
 };
 
 type ConcessionScope = {
@@ -337,11 +391,42 @@ export const searchConcesiones = async (
   const fts = toFts(filters.q);
   const clauses: string[] = [];
   const params: SQLInputValue[] = [];
-  pushFilter(clauses, params, "c.ccaa = ?", filters.ccaa || null);
-  pushFilter(clauses, params, "c.sector = ?", filters.sector || null);
-  pushFilter(clauses, params, "c.tipo_beneficiario = ?", filters.tipo || null);
-  pushFilter(clauses, params, "c.instrumento_slug = ?", filters.instrumento || null);
-  pushFilter(clauses, params, "c.organismo_norm LIKE ?", filters.organismo ? `${fold(filters.organismo)}%` : null);
+  if (filters.ccaa) {
+    const id = await labelId("lut_ccaa", filters.ccaa);
+    if (id === null) {
+      return emptyPage(filters, pageSize);
+    }
+    clauses.push("c.ccaa_id = ?");
+    params.push(id);
+  }
+  if (filters.sector) {
+    const id = await labelId("lut_sector", filters.sector);
+    if (id === null) {
+      return emptyPage(filters, pageSize);
+    }
+    clauses.push("c.sector_id = ?");
+    params.push(id);
+  }
+  if (filters.tipo) {
+    const id = await labelId("lut_tipo", filters.tipo);
+    if (id === null) {
+      return emptyPage(filters, pageSize);
+    }
+    clauses.push("c.tipo_id = ?");
+    params.push(id);
+  }
+  if (filters.instrumento) {
+    const id = await slugId(filters.instrumento);
+    if (id === null) {
+      return emptyPage(filters, pageSize);
+    }
+    clauses.push("c.instrumento_id = ?");
+    params.push(id);
+  }
+  if (filters.organismo) {
+    clauses.push("c.organismo_id IN (SELECT id FROM lut_organismo WHERE organismo_norm LIKE ?)");
+    params.push(`${fold(filters.organismo)}%`);
+  }
   pushFilter(clauses, params, "c.fecha >= ?", isoDate(filters.desde));
   pushFilter(clauses, params, "c.fecha <= ?", isoDate(filters.hasta));
   pushFilter(clauses, params, "c.importe >= ?", amountParam(filters.importeMin));
@@ -354,32 +439,40 @@ export const searchConcesiones = async (
     clauses.push("c.id_convocatoria = ?");
     params.push(scope.convocatoriaId);
   }
-  let from = "FROM concesiones c";
+  const from = "FROM concesion c";
   if (fts) {
-    from = `FROM concesiones c
-      WHERE (
-        c.beneficiario_id IN (SELECT rowid FROM ben_fts WHERE ben_fts MATCH ?)
-        OR c.id_convocatoria IN (SELECT rowid FROM conv_fts WHERE conv_fts MATCH ?)
-      )`;
+    clauses.unshift(
+      `(c.beneficiario_id IN (SELECT rowid FROM ben_fts WHERE ben_fts MATCH ?)
+        OR c.id_convocatoria IN (SELECT rowid FROM conv_fts WHERE conv_fts MATCH ?))`,
+    );
     params.unshift(fts, fts);
   }
-  const extra = clauses.length ? `${fts ? "AND" : "WHERE"} ${clauses.join(" AND ")}` : "";
-  const sort = CONC_SORT[filters.sort] ?? CONC_SORT.fecha;
+  let sortFrom = from;
+  let sortExpr = "c.fecha";
+  if (filters.sort === "importe") {
+    sortExpr = "c.importe";
+  } else if (filters.sort === "beneficiario") {
+    sortExpr = "p.nombre";
+    sortFrom = `${from} JOIN lut_persona p ON p.id = c.persona_id`;
+  } else if (filters.sort === "titulo") {
+    sortExpr = "cv.titulo";
+    sortFrom = `${from} JOIN convocatoria cv ON cv.id = c.id_convocatoria`;
+  } else if (filters.sort === "organismo") {
+    sortExpr = "o.organismo";
+    sortFrom = `${from} JOIN lut_organismo o ON o.id = c.organismo_id`;
+  }
+  const where = whereSql(clauses);
   const unfiltered = !fts && clauses.length === 0;
   const total = unfiltered
     ? (await getMeta()).nConcesiones
-    : asNumber((await queryGet(`SELECT COUNT(*) AS n ${from} ${extra}`, params))?.n ?? 0);
-  const rows = await queryAll(
-    `SELECT c.* ${from} ${extra} ORDER BY ${orderBy(sort, filters.dir, "c.id")} LIMIT ? OFFSET ?`,
+    : asNumber((await queryGet(`SELECT COUNT(*) AS n ${from} ${where}`, params))?.n ?? 0);
+  const idRows = await queryAll(
+    `SELECT c.id ${sortFrom} ${where} ORDER BY ${orderBy(sortExpr, filters.dir, "c.id")} LIMIT ? OFFSET ?`,
     [...params, pageSize, (filters.page - 1) * pageSize],
   );
+  const ids = idRows.map((row) => asNumber(row.id));
+  const rows = await hydrate("concesiones", ids);
   return { rows: rows.map(mapConcesion), total, page: filters.page, pageSize };
-};
-
-const BEN_SORT: Record<string, string> = {
-  importe: "b.importe_total",
-  concesiones: "b.n_concesiones",
-  nombre: "b.nombre",
 };
 
 export const searchBeneficiarios = async (
@@ -389,29 +482,49 @@ export const searchBeneficiarios = async (
   const fts = toFts(filters.q);
   const clauses: string[] = [];
   const params: SQLInputValue[] = [];
-  pushFilter(clauses, params, "b.tipo = ?", filters.tipo || null);
-  let from = "FROM beneficiarios b";
+  if (filters.tipo) {
+    const id = await labelId("lut_tipo", filters.tipo);
+    if (id === null) {
+      return emptyPage(filters, pageSize);
+    }
+    clauses.push("b.tipo_id = ?");
+    params.push(id);
+  }
+  let from = "FROM beneficiario b";
   if (fts) {
-    from = "FROM beneficiarios b JOIN ben_fts ON ben_fts.rowid = b.id";
+    from = "FROM beneficiario b JOIN ben_fts ON ben_fts.rowid = b.id";
     clauses.unshift("ben_fts MATCH ?");
     params.unshift(fts);
   }
   if (filters.ccaa) {
+    const id = await labelId("lut_ccaa", filters.ccaa);
+    if (id === null) {
+      return emptyPage(filters, pageSize);
+    }
     clauses.push(
-      "b.id IN (SELECT beneficiario_id FROM concesiones WHERE ccaa = ? AND beneficiario_id IS NOT NULL)",
+      "b.id IN (SELECT beneficiario_id FROM concesion WHERE ccaa_id = ? AND beneficiario_id IS NOT NULL)",
     );
-    params.push(filters.ccaa);
+    params.push(id);
   }
-  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-  const sort = BEN_SORT[filters.sort] ?? BEN_SORT.importe;
+  let sortFrom = from;
+  let sortExpr = "b.importe_total";
+  if (filters.sort === "concesiones") {
+    sortExpr = "b.n_concesiones";
+  } else if (filters.sort === "nombre") {
+    sortExpr = "p.nombre";
+    sortFrom = `${from} JOIN lut_persona p ON p.id = b.persona_id`;
+  }
+  const where = whereSql(clauses);
   const unfiltered = !fts && !filters.tipo && !filters.ccaa;
   const total = unfiltered
     ? (await getMeta()).nBeneficiarios
     : asNumber((await queryGet(`SELECT COUNT(*) AS n ${from} ${where}`, params))?.n ?? 0);
-  const rows = await queryAll(
-    `SELECT b.* ${from} ${where} ORDER BY ${orderBy(sort, filters.dir, "b.id")} LIMIT ? OFFSET ?`,
+  const idRows = await queryAll(
+    `SELECT b.id ${sortFrom} ${where} ORDER BY ${orderBy(sortExpr, filters.dir, "b.id")} LIMIT ? OFFSET ?`,
     [...params, pageSize, (filters.page - 1) * pageSize],
   );
+  const ids = idRows.map((row) => asNumber(row.id));
+  const rows = await hydrate("beneficiarios", ids);
   return { rows: rows.map(mapBeneficiario), total, page: filters.page, pageSize };
 };
 
@@ -447,17 +560,18 @@ export const getBeneficiario = async (id: number) => {
   }
   const years = await queryAll(
     `SELECT anio, COUNT(*) AS n, COALESCE(SUM(importe), 0) AS importe
-     FROM concesiones
+     FROM concesion
      WHERE beneficiario_id = ? AND anio IS NOT NULL
      GROUP BY anio
      ORDER BY anio`,
     [id],
   );
   const territorios = await queryAll(
-    `SELECT ccaa AS label, COUNT(*) AS n, COALESCE(SUM(importe), 0) AS importe
-     FROM concesiones
-     WHERE beneficiario_id = ?
-     GROUP BY ccaa
+    `SELECT ca.nombre AS label, COUNT(*) AS n, COALESCE(SUM(c.importe), 0) AS importe
+     FROM concesion c
+     JOIN lut_ccaa ca ON ca.id = c.ccaa_id
+     WHERE c.beneficiario_id = ?
+     GROUP BY ca.nombre
      ORDER BY importe DESC
      LIMIT 8`,
     [id],
