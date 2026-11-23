@@ -26,27 +26,21 @@ export const PaginationBar = ({ path, filters, total, pageSize }: PaginationBarP
       </p>
       <div className="flex gap-2">
         {previousHref ? (
-          <Link
-            href={previousHref}
-            className="rounded-full border border-line bg-elev px-4 py-2 text-sm font-semibold hover:bg-highlight focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-          >
+          <Link href={previousHref} className="xp-button">
             Anterior
           </Link>
         ) : (
-          <span className="rounded-full border border-line px-4 py-2 text-sm text-muted">Anterior</span>
+          <span className="xp-button" aria-disabled="true">Anterior</span>
         )}
         <span className="px-2 py-2 text-sm text-muted">
           {formatNumber(page)} / {formatNumber(pages)}
         </span>
         {nextHref ? (
-          <Link
-            href={nextHref}
-            className="rounded-full border border-line bg-elev px-4 py-2 text-sm font-semibold hover:bg-highlight focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-          >
+          <Link href={nextHref} className="xp-button">
             Siguiente
           </Link>
         ) : (
-          <span className="rounded-full border border-line px-4 py-2 text-sm text-muted">Siguiente</span>
+          <span className="xp-button" aria-disabled="true">Siguiente</span>
         )}
       </div>
     </nav>

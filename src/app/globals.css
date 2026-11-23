@@ -751,6 +751,12 @@ select.xp-input {
   background: repeating-linear-gradient(90deg, #3165d6 0 8px, #4a82ea 8px 10px);
 }
 
+.xp-column {
+  width: 100%;
+  border: 1px solid #0831d9;
+  background: repeating-linear-gradient(180deg, #3165d6 0 6px, #4a82ea 6px 8px);
+}
+
 .xp-progress-busy > span {
   width: 40%;
   animation: xp-busy 1.1s linear infinite;

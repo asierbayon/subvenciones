@@ -20,7 +20,7 @@ export const YearChart = ({ data }: { data: YearPoint[] }) => {
           <div key={item.anio} className="flex h-full min-w-0 flex-1 flex-col justify-end gap-1">
             <span className="truncate text-center text-[11px] text-muted tabular-nums">{formatCompactEuro(item.importe)}</span>
             <div className="flex min-h-0 flex-1 items-end">
-              <div className="w-full rounded-t-lg bg-accent" style={{ height: `${height}%` }} />
+              <div className="xp-column w-full" style={{ height: `${height}%` }} />
             </div>
             <span className="text-center text-xs font-semibold text-ink">{item.anio}</span>
           </div>
@@ -48,8 +48,8 @@ export const HorizontalBars = ({ data }: { data: Point[] }) => {
               </span>
               <span className="shrink-0 tabular-nums text-muted">{formatCompactEuro(item.importe)}</span>
             </div>
-            <div className="h-2.5 rounded-full bg-highlight">
-              <div className="h-2.5 rounded-full bg-accent" style={{ width: `${width}%` }} />
+            <div className="xp-progress">
+              <span style={{ width: `${width}%` }} />
             </div>
           </li>
         );
@@ -60,9 +60,9 @@ export const HorizontalBars = ({ data }: { data: Point[] }) => {
 
 export const DataTable = ({ data, firstColumn }: { data: Point[]; firstColumn: string }) => (
   <details className="mt-3">
-    <summary className="cursor-pointer text-sm font-semibold text-accent">Tabla de datos</summary>
-    <div className="mt-2 overflow-x-auto">
-      <table className="w-full text-sm">
+    <summary className="xp-link cursor-pointer font-normal">Tabla de datos</summary>
+    <div className="xp-table-frame mt-2">
+      <table className="xp-table">
         <thead>
           <tr className="text-left text-muted">
             <th scope="col" className="py-1 pr-3 font-semibold">

@@ -22,10 +22,8 @@ type FilterFormProps = {
 };
 
 const Field = ({ id, label, children }: { id: string; label: string; children: React.ReactNode }) => (
-  <div className="flex flex-col gap-1">
-    <label htmlFor={id} className="text-xs font-semibold tracking-wide text-muted uppercase">
-      {label}
-    </label>
+  <div className="xp-field">
+    <label htmlFor={id}>{label}</label>
     {children}
   </div>
 );
@@ -49,12 +47,14 @@ export const FilterForm = ({
   const territorios = [...facets.ccaa].sort(compareCcaa);
 
   return (
-    <form action={action} method="get" className="mb-6 rounded-3xl border border-line bg-elev p-4">
+    <form action={action} method="get" className="mb-4">
       <input type="hidden" name="sort" value={filters.sort} />
       <input type="hidden" name="dir" value={filters.dir} />
       {Object.entries(extraHidden ?? {}).map(([key, value]) => (
         <input key={key} type="hidden" name={key} value={value} />
       ))}
+      <fieldset className="xp-group">
+      <legend>Filtros</legend>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {showQuery ? (
           <Field id="q-filtro" label="Texto">
@@ -150,15 +150,16 @@ export const FilterForm = ({
       <div className="mt-4 flex flex-wrap items-center gap-3">
         {showMrr ? (
           <label className="inline-flex items-center gap-2 text-sm text-ink" htmlFor="mrr">
-            <input id="mrr" name="mrr" value="1" type="checkbox" defaultChecked={filters.mrr} className="size-4 accent-accent" />
+            <input id="mrr" name="mrr" value="1" type="checkbox" defaultChecked={filters.mrr} className="size-3.5 accent-accent" />
             Solo convocatorias MRR
           </label>
         ) : null}
         <Button type="submit">Aplicar filtros</Button>
-        <a href={action} className="text-sm font-semibold text-muted underline-offset-2 hover:text-ink hover:underline">
+        <a href={action} className="xp-link font-normal">
           Limpiar
         </a>
       </div>
+      </fieldset>
     </form>
   );
 };

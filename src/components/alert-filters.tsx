@@ -17,10 +17,12 @@ type AlertFilterFormProps = {
 export const AlertFilterForm = ({ action, filters, ccaa, anios, organismos, tipos }: AlertFilterFormProps) => {
   const territorios = [...ccaa].sort(compareCcaa);
   return (
-    <form action={action} method="get" className="mb-6 rounded-3xl border border-line bg-elev p-4">
+    <form action={action} method="get" className="mb-4">
+      <fieldset className="xp-group">
+      <legend>Filtros</legend>
       <div className={tipos ? "grid gap-3 md:grid-cols-4" : "grid gap-3 md:grid-cols-3"}>
-        <div className="flex flex-col gap-1">
-          <label htmlFor="alerta-ccaa" className="text-xs font-semibold tracking-wide text-muted uppercase">
+        <div className="xp-field">
+          <label htmlFor="alerta-ccaa">
             Territorio
           </label>
           <Select id="alerta-ccaa" name="ccaa" defaultValue={filters.ccaa}>
@@ -33,8 +35,8 @@ export const AlertFilterForm = ({ action, filters, ccaa, anios, organismos, tipo
           </Select>
         </div>
         {anios.length > 0 ? (
-          <div className="flex flex-col gap-1">
-            <label htmlFor="alerta-anio" className="text-xs font-semibold tracking-wide text-muted uppercase">
+          <div className="xp-field">
+            <label htmlFor="alerta-anio">
               Año
             </label>
             <Select id="alerta-anio" name="anio" defaultValue={filters.anio}>
@@ -47,8 +49,8 @@ export const AlertFilterForm = ({ action, filters, ccaa, anios, organismos, tipo
             </Select>
           </div>
         ) : null}
-        <div className="flex flex-col gap-1">
-          <label htmlFor="alerta-organismo" className="text-xs font-semibold tracking-wide text-muted uppercase">
+        <div className="xp-field">
+          <label htmlFor="alerta-organismo">
             Organismo
           </label>
           <Input
@@ -61,8 +63,8 @@ export const AlertFilterForm = ({ action, filters, ccaa, anios, organismos, tipo
           />
         </div>
         {tipos ? (
-          <div className="flex flex-col gap-1">
-            <label htmlFor="alerta-tipo" className="text-xs font-semibold tracking-wide text-muted uppercase">
+          <div className="xp-field">
+            <label htmlFor="alerta-tipo">
               Señal
             </label>
             <Select id="alerta-tipo" name="tipo" defaultValue={filters.tipo}>
@@ -83,10 +85,11 @@ export const AlertFilterForm = ({ action, filters, ccaa, anios, organismos, tipo
       </datalist>
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <Button type="submit">Aplicar filtros</Button>
-        <a href={action} className="text-sm font-semibold text-muted underline-offset-2 hover:text-ink hover:underline">
+        <a href={action} className="xp-link font-normal">
           Limpiar
         </a>
       </div>
+      </fieldset>
     </form>
   );
 };
@@ -119,21 +122,21 @@ export const AlertPager = ({
       </p>
       <div className="flex gap-2">
         {previousHref ? (
-          <Link href={previousHref} className="rounded-full border border-line bg-elev px-4 py-2 text-sm font-semibold hover:bg-highlight">
+          <Link href={previousHref} className="xp-button">
             Anterior
           </Link>
         ) : (
-          <span className="rounded-full border border-line px-4 py-2 text-sm text-muted">Anterior</span>
+          <span className="xp-button" aria-disabled="true">Anterior</span>
         )}
         <span className="px-2 py-2 text-sm text-muted">
           {formatNumber(page)} / {formatNumber(pages)}
         </span>
         {nextHref ? (
-          <Link href={nextHref} className="rounded-full border border-line bg-elev px-4 py-2 text-sm font-semibold hover:bg-highlight">
+          <Link href={nextHref} className="xp-button">
             Siguiente
           </Link>
         ) : (
-          <span className="rounded-full border border-line px-4 py-2 text-sm text-muted">Siguiente</span>
+          <span className="xp-button" aria-disabled="true">Siguiente</span>
         )}
       </div>
     </nav>
