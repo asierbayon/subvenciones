@@ -156,6 +156,45 @@ Reglas, todas sobre subvenciones dinerarias:
 
 `python3 pipeline/borme.py report` imprime las tasas de cruce. `python3 pipeline/borme.py --self-check` prueba el parser con un extracto corto de un anuncio real, sin red.
 
+### Qué salió de un pase 2016-2023
+
+El pase cubre los 2.086 días laborables del 1 ene 2016 al 31 dic 2023 (1.984 con sección primera y 102 sin boletín). Son 4.227.767 anuncios de sociedad y 1.890.203 hojas. El 99,6 % de los anuncios trae hoja registral. Solo 13.211 (el 0,3 %) publican un NIF junto a la etiqueta CIF o NIF: el cruce es, en la práctica, por nombre. El extracto ocupa unos 2,4 GB en `data/borme/borme.sqlite` y no se versiona. El índice de la aplicación, ya con estas tablas, queda en unos 5,4 GB.
+
+De 490.241 sociedades con NIF A, B, C o D y un nombre utilizable:
+
+| Confianza | Sociedades | Cuota |
+| --- | ---: | ---: |
+| Alta | 236.773 | 48,3 % |
+| Media | 38.283 | 7,8 % |
+| Débil, no se usa en las señales | 6.034 | 1,2 % |
+| Ambigua, varias hojas o varios NIF | 9.152 | 1,9 % |
+| Sin anuncio en la ventana | 199.999 | 40,8 % |
+
+La confianza alta o media suma el 56,1 %. El resto son sobre todo sociedades que no publicaron ningún acto entre 2016 y 2023: el BORME de esos años no es el censo histórico del registro.
+
+En una muestra aleatoria de 20 cruces de confianza alta, los 20 nombres normalizados coinciden con el de la hoja. Cuatro anuncios se abrieron además en el XML oficial (constitución con capital de 3.000 €, extinción por fusión, disolución voluntaria) y el texto leído es el de esa sociedad. Eso mide el acierto del emparejamiento por nombre, no descarta un homónimo que no hubiera publicado nada en la ventana.
+
+Indicadores, con el aviso de que no son pruebas:
+
+| Señal | Casos |
+| --- | ---: |
+| Constituida hace poco y capital mínimo | 1.141 |
+| Constituida y cerrada en poco tiempo | 24 |
+| Ayuda grande frente al capital | 3.089 |
+| Cierre poco después de la ayuda | 728 |
+| Mismo administrador | 13.511 |
+| Mismo socio único | 282 |
+| Mismo domicilio | 1.571 |
+
+Ejemplos reales del pase:
+
+- VILLADANGOS INTERMODAL SL (B24725194) se constituye el 6 feb 2019 con 3.000 € y socio único NETWORK STEEL RESOURCES SA. En 2019 cobra del organismo de fomento de Castilla y León. Anuncio `BORME-A-2019-41-24`.
+- FERROATLÁNTICA DE SABÓN SLU y FERROATLÁNTICA DE BOO SLU se constituyen el 13 ago 2019, cobran del Ministerio de Industria y el 13 oct 2021 el BORME publica su extinción por fusión en FERROATLÁNTICA SA (`BORME-A-2021-202-28`).
+- CAMPO ABADIA SL (B42819029) se constituye el 1 feb 2021, cobra del instituto de competitividad de Castilla y León y se extingue el 12 ene 2023 (`BORME-A-2023-8-37`).
+- Doce sociedades distintas cobran de la Consejería de Economía de Madrid y el BORME nombra administrador a GRUPO LARRUMBA HOLDING SL.
+
+Límites que el indicador no resuelve: una extinción puede ser una fusión (el anuncio dice «Disolución. Fusión. Extinción» y aquí cuenta como cierre); el capital de 1 € puede ser una limitada en formación sucesiva, que es legal; el administrador se publica sin DNI, así que un homónimo basta para enlazar dos sociedades; el domicilio de una gestoría concentra empresas que no forman un grupo.
+
 ## Arranque
 
 Hace falta Node.js 22 y Python 3.10 o superior. El pipeline solo usa la biblioteca estándar.
