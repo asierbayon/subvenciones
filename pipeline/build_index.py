@@ -614,7 +614,87 @@ def self_check(geo: Geo) -> None:
         "Sanidad y servicios sociales"
     )
     assert instrumento_slug("SUBVENCIÓN Y ENTREGA DINERARIA SIN CONTRAPRESTACIÓN") == "subvencion"
+    fts_self_check()
     log("Autocomprobación del pipeline correcta.")
+
+
+def fts_self_check() -> None:
+    """External-content FTS matches the old stored index and keeps no document copy."""
+    connection = sqlite3.connect(":memory:")
+    create_schema(connection)
+    titulo = "Concesión directa nº12 en A Coruæa"
+    organismo = "MINISTERIO DE HACIENDA Y FUNCIÓN PÚBLICA"
+    connection.execute(
+        """
+        INSERT INTO convocatorias (
+          id, codigo_bdns, mrr, administracion, departamento, organo,
+          organismo, organismo_norm, fecha, anio, titulo, titulo_cooficial,
+          url_bases, ccaa, sector
+        ) VALUES (1, '100', 0, 'ESTADO', ?, '', ?, ?, '2020-01-02', 2020, ?, '', '', ?, 'Otros')
+        """,
+        (organismo, organismo, fold(organismo), titulo, UNMAPPED),
+    )
+    connection.execute(
+        "INSERT INTO conv_fts(rowid, titulo, organismo, codigo_bdns) VALUES (?,?,?,?)",
+        (1, fold(titulo), fold(organismo), "100"),
+    )
+    nombre = "Baia Edicions A Coruæa SL"
+    connection.execute(
+        """
+        INSERT INTO beneficiarios (
+          id, ben_key, nif, nombre, nombre_norm, tipo, n_concesiones, importe_total
+        ) VALUES (3, 'N:B00000019', 'B00000019', ?, ?, 'Sociedad limitada', 1, 10)
+        """,
+        (nombre, fold(nombre)),
+    )
+    connection.execute(
+        "INSERT INTO ben_fts(rowid, nombre, nif) VALUES (3, ?, 'B00000019')",
+        (fold(nombre),),
+    )
+    connection.execute(
+        """
+        CREATE VIRTUAL TABLE conv_fts_full USING fts5(
+          titulo, organismo, codigo_bdns,
+          tokenize = "unicode61 remove_diacritics 2"
+        )
+        """
+    )
+    connection.execute(
+        "INSERT INTO conv_fts_full(rowid, titulo, organismo, codigo_bdns) VALUES (?,?,?,?)",
+        (1, fold(titulo), fold(organismo), "100"),
+    )
+    for query in ('"hacienda"* AND "12"*', '"coru"*', "100"):
+        external = connection.execute(
+            "SELECT rowid FROM conv_fts WHERE conv_fts MATCH ?",
+            (query,),
+        ).fetchall()
+        stored = connection.execute(
+            "SELECT rowid FROM conv_fts_full WHERE conv_fts_full MATCH ?",
+            (query,),
+        ).fetchall()
+        assert external == stored, (query, external, stored)
+    found = connection.execute(
+        """
+        SELECT c.id, c.titulo FROM convocatorias c
+        JOIN conv_fts ON conv_fts.rowid = c.id
+        WHERE conv_fts MATCH ?
+        """,
+        ('"hacienda"* AND "12"*',),
+    ).fetchone()
+    assert found == (1, titulo)
+    beneficiary = connection.execute(
+        """
+        SELECT b.id FROM beneficiarios b
+        JOIN ben_fts ON ben_fts.rowid = b.id
+        WHERE ben_fts MATCH ?
+        """,
+        ('"coru"* AND "b00000019"*',),
+    ).fetchone()
+    assert beneficiary == (3,)
+    names = {row[0] for row in connection.execute("SELECT name FROM sqlite_master")}
+    assert "conv_fts_content" not in names
+    assert "ben_fts_content" not in names
+    connection.close()
 
 
 def download(url: str, destination: Path) -> None:
