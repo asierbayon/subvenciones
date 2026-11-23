@@ -14,7 +14,7 @@ El repositorio upstream está **archivado** (nota de octubre de 2025). La licenc
 | `juridicas_1.csv.gz` | 74 MB | Concesiones a personas jurídicas |
 | `juridicas_2.csv.gz` | 72 MB | Resto de concesiones a personas jurídicas |
 
-Entre los dos ficheros de concesiones se leen 3.810.368 filas y quedan **3.794.474** identificadores distintos (unos 16.000 se repiten y se conserva la última copia). Cubren del 1 ene 2018 al 24 mar 2022. Hay **894.548** beneficiarios con NIF. El índice SQLite ocupa unos 4,9 GB.
+Entre los dos ficheros de concesiones se leen 3.810.368 filas y quedan **3.794.474** identificadores distintos (unos 16.000 se repiten y se conserva la última copia). Cubren del 1 ene 2018 al 24 mar 2022. Hay **894.548** beneficiarios con NIF. El índice SQLite ocupaba unos 4,9 GB antes de dejar de duplicar el texto; el tamaño esperado tras reconstruir está en [Tamaño del índice](#tamaño-del-índice).
 
 No hay JSON, SQL ni Parquet. No hay ficheros de personas físicas: el README de origen habla de 10,5 millones de concesiones, pero en `main` solo están las de personas jurídicas. El volcado es una foto, no una serie que se actualice: los CSV entraron con el scrape de 2022 (registros sobre todo de 2014 a marzo de 2022) y los commits de 2025 solo tocan documentación.
 
@@ -73,7 +73,7 @@ El comprimido son ~175 MB y, ya en claro, varios millones de filas. Eso no debe 
 Faro hace otra cosa:
 
 1. `pipeline/build_index.py` descarga los tres gzip (o reutiliza `data/raw/` si ya están), los lee en streaming y construye `data/bdns.sqlite`.
-2. El índice lleva FTS5 (títulos, organismos, nombres y NIF), índices para los filtros y tablas ya agregadas para el panel.
+2. El índice lleva FTS5 sin copia del texto (título, organismo y código BDNS; nombre y NIF), los textos repetidos en tablas de búsqueda, índices para los filtros y tablas ya agregadas para el panel.
 3. Next.js lee esa SQLite **en el servidor** con `node:sqlite` (viene con Node 22, sin servicio aparte). Cada vista pide una página de 20 filas.
 
 SQLite encaja mejor aquí que DuckDB-WASM o un Parquet en el cliente: el patrón es filtrar, ordenar y paginar, no un análisis ad hoc, y un solo fichero se despliega con la aplicación. Las agregaciones del panel se calculan una vez en el pipeline para que la portada no recorra la tabla de concesiones.
@@ -256,6 +256,42 @@ El Interior no publica el fichero de candidatos de las elecciones autonómicas: 
 El Tribunal de Cuentas fiscaliza la contabilidad de los partidos en PDF. No hay un fichero reutilizable de donantes identificables para 2018-2022, y una donación no dice que el administrador sea cargo del órgano que concede. No se usa.
 
 El indicador es solo eso. Un homónimo con los mismos apellidos puede no ser el cargo. No dice que votara la ayuda, que estuviera en la junta de gobierno ni que el expediente incumpla la Ley General de Subvenciones. La ficha enlaza la fuente oficial. El área de descargas del Interior a veces exige un reto anti-bots; si el zip falla, el script baja los mismos `.DAT` desde la copia íntegra de [JaimeObregon/infoelectoral](https://github.com/JaimeObregon/infoelectoral). La cita de cada persona sigue siendo la página del ministerio.
+
+## Tamaño del índice
+
+La búsqueda no usa `snippet()` ni `bm25()`. Pide coincidencias de FTS5 y luego lee la fila. El índice sigue cubriendo lo que escribe la caja de búsqueda: título, organismo y código BDNS de la convocatoria, y nombre y NIF del beneficiario. FTS5 es de contenido externo (`content=` y `content_rowid='id'`): guarda el índice invertido y no una segunda copia del texto. El cargador inserta la forma plegada (sin tildes) que ya produce la caja. Un `rebuild` releería el texto visible y partiría distinto `nº12`, `100ª` o `CORUÆA`, así que no se usa.
+
+Lo que se repite sale de la fila de la concesión y queda en tablas de ids: organismo (administración, departamento, órgano y nombre, 2.510 combinaciones en el volcado), persona (NIF y nombre, una por beneficiario), instrumento (5), territorio, sector y tipo. El título, la URL y el código BDNS de la concesión son siempre los de su convocatoria (0 diferencias en 3.810.368 filas) y la vista los toma de ahí. Las vistas `convocatorias`, `concesiones` y `beneficiarios` conservan los nombres de columna antiguos para alertas, BORME, contratos y vínculos. La web filtra por los ids en la tabla física y solo resuelve el texto de las 20 filas de la página, para que el plan siga usando el índice.
+
+Medida con `dbstat` en un índice de prueba de 3.000 convocatorias, 30.000 concesiones y 4.000 beneficiarios, con textos de la longitud media del volcado:
+
+| | Con texto duplicado | FTS sin copia | Textos normalizados |
+| --- | ---: | ---: | ---: |
+| Fichero | 34.988.032 | 34.123.776 | 10.674.176 |
+| Tabla de concesiones | 20.533.248 | 20.533.248 | 1.585.152 |
+| `conv_fts_content` | 671.744 | 0 | 0 |
+| `ben_fts_content` | 192.512 | 0 | 0 |
+
+El hueco entre la segunda y la tercera columna es la normalización. Escalado a 3.794.474 concesiones, esa tabla pasa de unos 2,6 GB a unos 200 MB. La copia FTS que desaparece, ajustada a la longitud real (136 caracteres de media en la convocatoria, 34 en el beneficiario), son unos 52 MB más unos 40 MB. Los índices de organismo, tipo, territorio, instrumento y código encogen otro tanto: en la prueba, el de organismo bajó de 1.957.888 a 606.208 bytes en 30.000 filas.
+
+Con eso, `pnpm data` debería dejar el índice en **unos 2,0 GB**, frente a los 4,9 GB anteriores. Las tablas que añaden las alertas, el BORME, los contratos y los vínculos no cambian de forma; en el pase anterior sumaban lo que separa 4,9 GB de 5,4 GB. El fichero completo, ya con esos cruces, debería quedar en **unos 2,5 GB**.
+
+Hace falta reconstruir desde cero. Un índice a medias del esquema viejo no se migra.
+
+```bash
+pnpm data
+python3 pipeline/alerts.py fraccionamiento
+python3 pipeline/alerts.py concentracion
+python3 pipeline/alerts.py calendario
+python3 pipeline/alerts.py estadistica
+python3 pipeline/alerts.py directa
+python3 pipeline/contratos.py
+python3 pipeline/borme.py run
+python3 pipeline/politicos.py
+python3 pipeline/vinculos.py
+```
+
+`pnpm alerts` solo lanza el fraccionamiento. `pnpm contratos`, `pnpm borme`, `pnpm politicos` y `pnpm vinculos` equivalen a los comandos de Python correspondientes. El orden es el de arriba: cada paso lee el índice que escribió el anterior.
 
 ## Arranque
 
