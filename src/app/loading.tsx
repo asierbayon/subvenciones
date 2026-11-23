@@ -1,6 +1,9 @@
 const Loading = () => (
-  <p className="text-muted" role="status">
-    Cargando datos…
+  <p className="xp-loading" role="status">
+    <span>Cargando datos…</span>
+    <span className="xp-progress xp-progress-busy" aria-hidden="true">
+      <span />
+    </span>
   </p>
 );
 
