@@ -93,7 +93,7 @@
 }
 
 body {
-  background: var(--xp-desktop) fixed;
+  background: var(--xp-face);
   color: var(--xp-ink);
   font-family: Tahoma, "Trebuchet MS", "Segoe UI", sans-serif;
   font-size: 13px;
@@ -138,6 +138,68 @@ body {
 
 .xp-skip:focus {
   transform: none;
+}
+
+.xp-app {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  background: var(--xp-face);
+}
+
+.xp-header-bar {
+  display: flex;
+  height: 36px;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  background: var(--xp-title);
+  color: #fff;
+}
+
+.xp-header-copy {
+  min-width: 0;
+}
+
+.xp-header-name,
+.xp-header-sub {
+  margin: 0;
+  text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.45);
+}
+
+.xp-header-name {
+  font-family: "Trebuchet MS", Tahoma, sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.xp-header-sub {
+  font-size: 11px;
+  line-height: 1.1;
+}
+
+.xp-header-tools {
+  margin-left: auto;
+}
+
+.xp-header-tools .xp-tray-toggle {
+  width: 22px;
+  height: 22px;
+}
+
+.xp-alertbar-label {
+  padding: 3px 8px 3px 10px;
+  color: var(--xp-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.xp-main {
+  min-width: 0;
+  flex: 1;
+  padding: 12px 14px 16px;
 }
 
 .xp-desktop {
