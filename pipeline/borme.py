@@ -1620,6 +1620,24 @@ def match() -> None:
         borme_range = connection.execute("SELECT valor FROM borme.borme_meta WHERE clave = 'rango'").fetchone()
         if borme_range:
             connection.execute("INSERT INTO borme_meta (clave, valor) VALUES ('rango', ?)", (borme_range[0],))
+        coverage = None
+        attached = {
+            name
+            for (name,) in connection.execute(
+                "SELECT name FROM borme.sqlite_master WHERE type = 'table'"
+            )
+        }
+        if "acto" in attached:
+            coverage = connection.execute("SELECT MIN(fecha), MAX(fecha) FROM borme.acto").fetchone()
+        elif "sociedad" in attached:
+            coverage = connection.execute(
+                "SELECT MIN(fecha_ultimo), MAX(fecha_ultimo) FROM borme.sociedad"
+            ).fetchone()
+        if coverage and coverage[0] and coverage[1]:
+            connection.execute(
+                "INSERT INTO borme_meta (clave, valor) VALUES ('cobertura', ?)",
+                (f"{coverage[0]}..{coverage[1]}",),
+            )
         for key in ("n_actos", "n_sociedades", "n_actos_con_hoja", "n_actos_con_nif"):
             found = connection.execute("SELECT valor FROM borme.borme_meta WHERE clave = ?", (key,)).fetchone()
             if found:
