@@ -6,6 +6,7 @@ import { ExternalLink, Fact } from "@/components/facts";
 import { PageIntro, SetupNeeded } from "@/components/setup-needed";
 import { guard } from "@/lib/db";
 import { formatDate, formatEuroExact } from "@/lib/format";
+import { ContratosPublicos } from "@/components/contratos-publicos";
 import { getConcesion, getConvocatoria } from "@/lib/queries";
 import { bdnsConvocatoriaUrl } from "@/lib/utils";
 
@@ -106,6 +107,7 @@ const ConcesionPage = async ({ params }: { params: Promise<Params> }) => {
           }
         />
       </dl>
+      <ContratosPublicos nif={row.nif} organismo={row.organismo} />
       {loaded.convocatoria ? (
         <p className="mt-6 text-sm text-muted">
           Esta convocatoria acumula {formatEuroExact(loaded.convocatoria.convocatoria.importeTotal)} en{" "}

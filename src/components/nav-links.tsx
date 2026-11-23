@@ -9,7 +9,6 @@ const LINKS = [
   { href: "/convocatorias", label: "Convocatorias" },
   { href: "/concesiones", label: "Concesiones" },
   { href: "/beneficiarios", label: "Beneficiarios" },
-  { href: "/abiertas", label: "Abiertas ahora" },
   { href: "/alertas", label: "Alertas" },
 ];
 

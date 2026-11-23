@@ -1435,6 +1435,34 @@ def ensure_match_schema(connection: sqlite3.Connection) -> None:
     )
 
 
+def publish_borme_admins(connection: sqlite3.Connection) -> None:
+    """Names the political-link indicator reads. Dates are not in the aggregated acts."""
+    connection.executescript(
+        """
+        DROP TABLE IF EXISTS borme_admins;
+        CREATE TABLE borme_admins (
+          nif TEXT NOT NULL,
+          nombre TEXT NOT NULL,
+          cargo TEXT,
+          desde TEXT,
+          hasta TEXT
+        );
+        INSERT INTO borme_admins (nif, nombre, cargo, desde, hasta)
+        SELECT e.nif, p.nombre,
+               CASE WHEN p.rol = 'S' THEN 'Socio único' ELSE 'Administrador' END,
+               '', ''
+        FROM borme_persona p
+        JOIN borme_empresa e ON e.beneficiario_id = p.beneficiario_id
+        WHERE e.confianza IN ('alta', 'media')
+          AND p.kind = 'P'
+          AND e.nif != '';
+        CREATE INDEX IF NOT EXISTS idx_borme_admins_nif ON borme_admins(nif);
+        """
+    )
+    count = connection.execute("SELECT COUNT(*) FROM borme_admins").fetchone()[0]
+    log(f"Administradores para vínculos políticos: {count}")
+
+
 def match() -> None:
     borme = connect_borme()
     try:
@@ -1654,6 +1682,7 @@ def match() -> None:
         build_sociedad_alerts(connection)
         build_vinculo_alerts(connection)
         connection.commit()
+        publish_borme_admins(connection)
         n_soc = connection.execute("SELECT COUNT(*) FROM alert_borme_sociedad").fetchone()[0]
         n_vin = connection.execute("SELECT COUNT(*) FROM alert_borme_vinculo").fetchone()[0]
         connection.execute("INSERT INTO borme_meta (clave, valor) VALUES ('n_alert_sociedad', ?)", (str(n_soc),))

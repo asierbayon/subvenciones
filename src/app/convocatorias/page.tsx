@@ -7,6 +7,7 @@ import { PageIntro, SetupNeeded } from "@/components/setup-needed";
 import { guard } from "@/lib/db";
 import { formatDate, formatEuro, formatNumber } from "@/lib/format";
 import { parseFilters, type SearchParams } from "@/lib/params";
+import { ContratosPublicos } from "@/components/contratos-publicos";
 import { getFacets, searchConvocatorias, type Convocatoria } from "@/lib/queries";
 
 const columns: Column<Convocatoria>[] = [
@@ -77,6 +78,7 @@ const ConvocatoriasPage = async ({ searchParams }: { searchParams: Promise<Searc
         </p>
       </PageIntro>
       <FilterForm action="/convocatorias" filters={filters} facets={loaded.facets} showMrr importeHint="Importe concedido" />
+      {filters.organismo ? <ContratosPublicos organismo={filters.organismo} /> : null}
       <DataView
         rows={loaded.page.rows}
         columns={columns}

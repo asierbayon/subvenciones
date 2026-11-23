@@ -41,6 +41,8 @@ export type FraccionAlert = {
   n: number;
   nConvocatorias: number;
   importeSuma: number;
+  puntuacion: number;
+  medianaOrganismo: number;
   items: FraccionItem[];
 };
 
@@ -222,6 +224,11 @@ export const listRecurrentes = async (filters: AlertFilters) => {
     from += " JOIN alert_recurrente_anio y ON y.recurrente_id = r.id AND y.anio = ?";
     params.push(Number(filters.anio));
   }
+  clauses.push("r.n_anios >= 4");
+  clauses.push("r.importe >= 1000000");
+  clauses.push("substr(r.nif, 1, 1) NOT IN ('P', 'Q', 'S')");
+  clauses.push("upper(r.nombre) NOT LIKE '%UNIVERSIDAD%'");
+  clauses.push("upper(r.nombre) NOT LIKE '%UNIVERSITAT%'");
   if (filters.ccaa) {
     clauses.push("r.ccaa = ?");
     params.push(filters.ccaa);
@@ -452,7 +459,7 @@ export const listDirecta = async (filters: AlertFilters) => {
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const total = asNumber((db.prepare(`SELECT COUNT(*) AS n FROM alert_directa ${where}`).get(...params) as { n: number }).n);
   const rows = db
-    .prepare(`SELECT * FROM alert_directa ${where} ORDER BY cuota DESC, n_directa DESC LIMIT ? OFFSET ?`)
+    .prepare(`SELECT * FROM alert_directa ${where} ORDER BY n_directa DESC, cuota DESC LIMIT ? OFFSET ?`)
     .all(...params, ALERT_PAGE_SIZE, (filters.page - 1) * ALERT_PAGE_SIZE) as Record<string, SQLOutputValue>[];
   const ccaa = (db.prepare("SELECT DISTINCT ccaa FROM alert_directa ORDER BY ccaa").all() as { ccaa: string }[]).map(
     (row) => row.ccaa,
@@ -485,7 +492,7 @@ export const listFraccionamiento = async (filters: AlertFilters) => {
   const total = asNumber((db.prepare(`SELECT COUNT(*) AS n FROM alert_fraccion ${where}`).get(...params) as { n: number }).n);
   const rows = db
     .prepare(
-      `SELECT * FROM alert_fraccion ${where} ORDER BY importe_suma DESC, id DESC LIMIT ? OFFSET ?`,
+      `SELECT * FROM alert_fraccion ${where} ORDER BY puntuacion DESC, importe_suma DESC, id DESC LIMIT ? OFFSET ?`,
     )
     .all(...params, ALERT_PAGE_SIZE, (filters.page - 1) * ALERT_PAGE_SIZE) as Record<string, SQLOutputValue>[];
   const ids = rows.map((row) => asNumber(row.id));
@@ -529,6 +536,8 @@ export const listFraccionamiento = async (filters: AlertFilters) => {
     n: asNumber(row.n),
     nConvocatorias: asNumber(row.n_convocatorias),
     importeSuma: asNumber(row.importe_suma),
+    puntuacion: asNumber(row.puntuacion),
+    medianaOrganismo: asNumber(row.mediana_organismo),
     items: itemsByAlert.get(asNumber(row.id)) ?? [],
   }));
   const ccaa = (db.prepare("SELECT DISTINCT ccaa FROM alert_fraccion ORDER BY ccaa").all() as { ccaa: string }[]).map(
@@ -545,4 +554,184 @@ export const listFraccionamiento = async (filters: AlertFilters) => {
       .all() as { organismo: string }[]
   ).map((row) => row.organismo);
   return { alerts, total, ccaa, anios, organismos, pageSize: ALERT_PAGE_SIZE };
+};
+
+export type VinculoItem = {
+  concesionId: number;
+  fecha: string;
+  importe: number;
+  titulo: string;
+  codigoBdns: string;
+};
+
+export type VinculoAlert = {
+  id: number;
+  confianza: number;
+  lugares: number;
+  modo: string;
+  motivo: string;
+  nif: string;
+  beneficiarioId: number | null;
+  empresa: string;
+  adminNombre: string;
+  adminCargo: string;
+  adminDesde: string;
+  adminHasta: string;
+  politicoNombre: string;
+  rol: string;
+  cuerpo: string;
+  partido: string;
+  ccaa: string;
+  organismo: string;
+  anio: number;
+  fechaInicio: string;
+  fechaFin: string;
+  n: number;
+  importeSuma: number;
+  fuente: string;
+  fuenteUrl: string;
+  mandatoDesde: string;
+  mandatoHasta: string;
+  precisionFechas: string;
+  items: VinculoItem[];
+};
+
+const vinculoWhere = (filters: AlertFilters) => {
+  const clauses: string[] = [];
+  const params: SQLInputValue[] = [];
+  if (filters.ccaa) {
+    clauses.push("ccaa = ?");
+    params.push(filters.ccaa);
+  }
+  if (filters.anio) {
+    clauses.push("anio = ?");
+    params.push(Number(filters.anio));
+  }
+  if (filters.organismo) {
+    clauses.push("organismo_norm LIKE ?");
+    params.push(`${fold(filters.organismo)}%`);
+  }
+  if (filters.tipo) {
+    clauses.push("rol = ?");
+    params.push(filters.tipo);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  return { where, params };
+};
+
+const mapVinculo = (row: Record<string, SQLOutputValue>, items: VinculoItem[]): VinculoAlert => ({
+  id: asNumber(row.id),
+  confianza: asNumber(row.confianza),
+  lugares: asNumber(row.lugares),
+  modo: asString(row.modo),
+  motivo: asString(row.motivo),
+  nif: asString(row.nif),
+  beneficiarioId: asNumberOrNull(row.beneficiario_id),
+  empresa: asString(row.empresa),
+  adminNombre: asString(row.admin_nombre),
+  adminCargo: asString(row.admin_cargo),
+  adminDesde: asString(row.admin_desde),
+  adminHasta: asString(row.admin_hasta),
+  politicoNombre: asString(row.politico_nombre),
+  rol: asString(row.rol),
+  cuerpo: asString(row.cuerpo),
+  partido: asString(row.partido),
+  ccaa: asString(row.ccaa),
+  organismo: asString(row.organismo),
+  anio: asNumber(row.anio),
+  fechaInicio: asString(row.fecha_inicio),
+  fechaFin: asString(row.fecha_fin),
+  n: asNumber(row.n),
+  importeSuma: asNumber(row.importe_suma),
+  fuente: asString(row.fuente),
+  fuenteUrl: asString(row.fuente_url),
+  mandatoDesde: asString(row.mandato_desde),
+  mandatoHasta: asString(row.mandato_hasta),
+  precisionFechas: asString(row.precision_fechas),
+  items,
+});
+
+const vinculoItems = (db: Awaited<ReturnType<typeof getDb>>, ids: number[]) => {
+  const itemsByAlert = new Map<number, VinculoItem[]>();
+  if (ids.length === 0) {
+    return itemsByAlert;
+  }
+  const marks = ids.map(() => "?").join(",");
+  const items = db
+    .prepare(
+      `SELECT alert_id, concesion_id, fecha, importe, titulo, codigo_bdns
+       FROM alert_vinculo_item WHERE alert_id IN (${marks}) ORDER BY fecha, concesion_id`,
+    )
+    .all(...ids) as Record<string, SQLOutputValue>[];
+  for (const item of items) {
+    const alertId = asNumber(item.alert_id);
+    const list = itemsByAlert.get(alertId) ?? [];
+    list.push({
+      concesionId: asNumber(item.concesion_id),
+      fecha: asString(item.fecha),
+      importe: asNumber(item.importe),
+      titulo: asString(item.titulo),
+      codigoBdns: asString(item.codigo_bdns),
+    });
+    itemsByAlert.set(alertId, list);
+  }
+  return itemsByAlert;
+};
+
+const isMissingTable = (error: unknown) => {
+  const message = error instanceof Error ? error.message : "";
+  return message.includes("no such table");
+};
+
+export const listVinculos = async (filters: AlertFilters) => {
+  const db = await getDb();
+  const { where, params } = vinculoWhere(filters);
+  const total = asNumber((db.prepare(`SELECT COUNT(*) AS n FROM alert_vinculo ${where}`).get(...params) as { n: number }).n);
+  const rows = db
+    .prepare(
+      `SELECT * FROM alert_vinculo ${where} ORDER BY confianza DESC, importe_suma DESC, id DESC LIMIT ? OFFSET ?`,
+    )
+    .all(...params, ALERT_PAGE_SIZE, (filters.page - 1) * ALERT_PAGE_SIZE) as Record<string, SQLOutputValue>[];
+  const grouped = vinculoItems(
+    db,
+    rows.map((row) => asNumber(row.id)),
+  );
+  const alerts = rows.map((row) => mapVinculo(row, grouped.get(asNumber(row.id)) ?? []));
+  const ccaa = (db.prepare("SELECT DISTINCT ccaa FROM alert_vinculo ORDER BY ccaa").all() as { ccaa: string }[]).map(
+    (row) => row.ccaa,
+  );
+  const anios = (db.prepare("SELECT DISTINCT anio FROM alert_vinculo ORDER BY anio").all() as { anio: number }[]).map(
+    (row) => asNumber(row.anio),
+  );
+  const organismos = (
+    db
+      .prepare("SELECT organismo, COUNT(*) AS n FROM alert_vinculo GROUP BY organismo ORDER BY n DESC LIMIT 300")
+      .all() as { organismo: string }[]
+  ).map((row) => row.organismo);
+  return { alerts, total, ccaa, anios, organismos, pageSize: ALERT_PAGE_SIZE };
+};
+
+export const listVinculosBeneficiario = async (nif: string) => {
+  const cleaned = nif.trim();
+  if (!cleaned) {
+    return [];
+  }
+  const db = await getDb();
+  try {
+    const rows = db
+      .prepare(
+        `SELECT * FROM alert_vinculo WHERE nif = ? ORDER BY confianza DESC, importe_suma DESC, anio DESC LIMIT 20`,
+      )
+      .all(cleaned) as Record<string, SQLOutputValue>[];
+    const grouped = vinculoItems(
+      db,
+      rows.map((row) => asNumber(row.id)),
+    );
+    return rows.map((row) => mapVinculo(row, grouped.get(asNumber(row.id)) ?? []));
+  } catch (error) {
+    if (isMissingTable(error)) {
+      return [];
+    }
+    throw error;
+  }
 };

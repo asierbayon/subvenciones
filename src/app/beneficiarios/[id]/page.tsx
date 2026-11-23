@@ -7,13 +7,90 @@ import { DataView, type Column } from "@/components/data-view";
 import { Fact } from "@/components/facts";
 import { RegistroMercantil } from "@/components/registro-mercantil";
 import { PaginationBar } from "@/components/pagination-bar";
+import { AlertBanner } from "@/components/alert-banner";
 import { PageIntro, SetupNeeded } from "@/components/setup-needed";
+import { listVinculosBeneficiario, type VinculoAlert } from "@/lib/alerts";
 import { guard } from "@/lib/db";
 import { formatDate, formatEuro, formatNumber } from "@/lib/format";
 import { parseFilters, type SearchParams } from "@/lib/params";
+import { ContratosPublicos } from "@/components/contratos-publicos";
 import { getBeneficiario, searchConcesiones, type Concesion } from "@/lib/queries";
 
 type Params = { id: string };
+
+const roleLabel = (rol: string) => {
+  if (rol === "alcalde") {
+    return "Alcaldía";
+  }
+  if (rol === "concejal") {
+    return "Concejal electo";
+  }
+  if (rol === "consejero_insular") {
+    return "Cabildo";
+  }
+  if (rol === "diputado") {
+    return "Diputado autonómico";
+  }
+  if (rol === "alto_cargo") {
+    return "Alto cargo";
+  }
+  return rol;
+};
+
+const CompanyRole = ({ cargo }: { cargo: string }) => {
+  if (!cargo) {
+    return null;
+  }
+  return <> ({cargo})</>;
+};
+
+const VinculoBlock = ({ rows }: { rows: VinculoAlert[] }) => {
+  if (rows.length === 0) {
+    return null;
+  }
+  return (
+    <section className="mt-6" aria-label="Vínculos políticos">
+      <h2 className="font-display text-3xl">Vínculos políticos</h2>
+      <div className="mt-3">
+        <AlertBanner>
+          El nombre del administrador coincide con un cargo público del órgano que concede, por encima del 85 % de
+          confianza. Puede haber homónimos. No demuestra que esa persona interviniera en el expediente.
+        </AlertBanner>
+      </div>
+      <ul className="grid gap-3">
+        {rows.map((alert) => (
+          <li key={alert.id} className="rounded-3xl border border-line bg-elev p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="terra">{roleLabel(alert.rol)}</Badge>
+              <Badge>Confianza {Math.round(alert.confianza * 100).toLocaleString("es-ES")} %</Badge>
+            </div>
+            <p className="mt-3 text-sm leading-relaxed">
+              <span className="font-semibold">{alert.politicoNombre}</span>, {alert.cuerpo}. La ayuda la concede{" "}
+              {alert.organismo} ({alert.anio}). En la sociedad consta como {alert.adminNombre}
+              <CompanyRole cargo={alert.adminCargo} />.
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-muted">{alert.motivo}</p>
+            <p className="mt-2 text-sm">
+              <a
+                href={alert.fuenteUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="font-semibold underline decoration-line underline-offset-2 hover:decoration-accent"
+              >
+                Fuente publicada
+              </a>
+            </p>
+            <p className="mt-2 text-sm">
+              <Link href="/alertas/vinculos" className="font-semibold underline decoration-line underline-offset-2 hover:decoration-accent">
+                Ver el indicador completo
+              </Link>
+            </p>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+};
 
 const columns: Column<Concesion>[] = [
   {
@@ -98,7 +175,8 @@ const BeneficiarioPage = async ({
       return null;
     }
     const grants = await searchConcesiones(cleared, { beneficiarioId: numeric });
-    return { found, grants };
+    const vinculos = await listVinculosBeneficiario(found.beneficiario.nif);
+    return { found, grants, vinculos };
   });
   if (loaded === "missing") {
     return <SetupNeeded />;
@@ -127,6 +205,7 @@ const BeneficiarioPage = async ({
         <Fact label="Importe" value={formatEuro(row.importeTotal)} />
       </dl>
       <RegistroMercantil beneficiarioId={row.id} nif={row.nif} />
+      <VinculoBlock rows={loaded.vinculos} />
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <figure className="rounded-3xl border border-line bg-elev p-4">
           <figcaption className="mb-2 font-display text-2xl">Importe por año</figcaption>
@@ -139,6 +218,7 @@ const BeneficiarioPage = async ({
           <DataTable data={loaded.found.territorios} firstColumn="Territorio" />
         </figure>
       </div>
+      <ContratosPublicos nif={row.nif} />
       <h2 className="mt-10 font-display text-3xl">Todas las concesiones</h2>
       <div className="mt-4">
         <DataView

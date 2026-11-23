@@ -1,18 +1,72 @@
 import Link from "next/link";
 import { AlertBanner } from "@/components/alert-banner";
 import { AlertFilterForm, AlertPager } from "@/components/alert-filters";
-import { ExternalLink } from "@/components/facts";
 import { EmptyState, PageIntro, SetupNeeded } from "@/components/setup-needed";
 import { Badge } from "@/components/ui/badge";
 import { DatabaseMissingError, guard } from "@/lib/db";
-import { formatDate, formatEuro, formatNumber } from "@/lib/format";
-import {
-  listVinculos,
-  parseAlertFilters,
-  vinculoLabel,
-  VINCULO_TIPOS,
-  type AlertSearch,
-} from "@/lib/registro";
+import { listVinculos, parseAlertFilters, type AlertSearch, type VinculoAlert } from "@/lib/alerts";
+import { formatDate, formatEuro } from "@/lib/format";
+
+const ROLES = [
+  { value: "alcalde", label: "Alcaldía" },
+  { value: "concejal", label: "Concejal electo" },
+  { value: "consejero_insular", label: "Cabildo" },
+  { value: "diputado", label: "Diputado autonómico" },
+  { value: "alto_cargo", label: "Alto cargo" },
+];
+
+const roleLabel = (rol: string) => ROLES.find((item) => item.value === rol)?.label ?? rol;
+
+const confidenceLabel = (value: number) =>
+  `${Math.round(value * 100).toLocaleString("es-ES")} %`;
+
+const CompanyName = ({ alert }: { alert: VinculoAlert }) => {
+  if (!alert.beneficiarioId) {
+    return alert.empresa;
+  }
+  return (
+    <Link
+      href={`/beneficiarios/${alert.beneficiarioId}`}
+      className="underline decoration-line underline-offset-2 hover:decoration-accent"
+    >
+      {alert.empresa}
+    </Link>
+  );
+};
+
+const NamesakeBadge = ({ lugares }: { lugares: number }) => {
+  if (lugares <= 1) {
+    return null;
+  }
+  return <Badge>Nombre repetido en otro órgano</Badge>;
+};
+
+const PartyName = ({ partido }: { partido: string }) => {
+  if (!partido) {
+    return null;
+  }
+  return <>, {partido}</>;
+};
+
+const CompanyTenure = ({ alert }: { alert: VinculoAlert }) => {
+  if (!alert.adminDesde && !alert.adminHasta) {
+    return <>, sin fechas de nombramiento</>;
+  }
+  return (
+    <>
+      , {formatDate(alert.adminDesde)} – {formatDate(alert.adminHasta)}
+    </>
+  );
+};
+
+const GrantLink = ({ id, children }: { id: number; children: string }) => (
+  <Link
+    href={`/concesiones/${id}`}
+    className="font-semibold underline decoration-line underline-offset-2 hover:decoration-accent"
+  >
+    {children}
+  </Link>
+);
 
 const VinculosPage = async ({ searchParams }: { searchParams: Promise<AlertSearch> }) => {
   const filters = parseAlertFilters(await searchParams);
@@ -35,10 +89,11 @@ const VinculosPage = async ({ searchParams }: { searchParams: Promise<AlertSearc
   }
   if (!loaded) {
     return (
-      <PageIntro eyebrow="Registro mercantil" title="Falta calcular este indicador">
+      <PageIntro eyebrow="Vínculos políticos" title="Falta calcular este indicador">
         <p>
-          Ejecuta <code>python3 pipeline/borme.py run</code>. Hace falta el índice de concesiones y el extracto del
-          BORME. El paso es opcional.
+          Hace falta la tabla de cargos públicos y, cuando exista, la de administradores societarios. En la raíz del
+          proyecto: <code>python3 pipeline/politicos.py</code> y después <code>python3 pipeline/vinculos.py</code>. El
+          segundo comando no escribe nada hasta que el índice tiene la tabla <code>borme_admins</code>.
         </p>
       </PageIntro>
     );
@@ -46,16 +101,16 @@ const VinculosPage = async ({ searchParams }: { searchParams: Promise<AlertSearc
 
   return (
     <>
-      <PageIntro eyebrow="Registro mercantil" title="Quién está detrás de las sociedades">
+      <PageIntro eyebrow="Vínculos políticos" title="Ayudas a sociedades de cargos del mismo órgano">
         <p>
-          Agrupa beneficiarios con NIF distinto que cobran del mismo organismo y, en el BORME de 2016 a 2023, publican
-          al mismo administrador, al mismo socio único o el mismo domicilio social. Solo entran los cruces de confianza
-          alta.
+          Cruza el administrador de una sociedad con un cargo electo o un alto cargo del organismo que concede la
+          subvención, en fechas que se solapan. El caso típico es la empresa de un concejal que cobra del ayuntamiento.
         </p>
       </PageIntro>
       <AlertBanner>
-        El BORME escribe el nombre de la persona sin DNI. Dos administradores homónimos pueden parecer el mismo, y una
-        gestoría concentra domicilios. El indicador pide mirar los expedientes: no demuestra concertación.
+        Un homónimo puede compartir nombre y apellidos. No se publican coincidencias por debajo del 85 % de confianza,
+        ni nombres que aparecen en tres o más órganos. No implica que la persona votara el expediente ni que la ayuda
+        sea irregular.
       </AlertBanner>
       <AlertFilterForm
         action="/alertas/vinculos"
@@ -63,7 +118,7 @@ const VinculosPage = async ({ searchParams }: { searchParams: Promise<AlertSearc
         ccaa={loaded.ccaa}
         anios={loaded.anios}
         organismos={loaded.organismos}
-        tipos={VINCULO_TIPOS}
+        tipos={ROLES}
       />
       {loaded.alerts.length === 0 ? (
         <EmptyState>Ningún indicador con estos filtros.</EmptyState>
@@ -72,55 +127,49 @@ const VinculosPage = async ({ searchParams }: { searchParams: Promise<AlertSearc
           {loaded.alerts.map((alert) => (
             <li key={alert.id} className="rounded-3xl border border-line bg-elev p-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="font-display text-2xl">{alert.etiqueta}</h2>
-                <p className="text-sm font-semibold tabular-nums">{formatEuro(alert.importe)}</p>
+                <h2 className="font-display text-2xl">
+                  <CompanyName alert={alert} />
+                </h2>
+                <p className="text-sm font-semibold tabular-nums">{formatEuro(alert.importeSuma)}</p>
               </div>
               <p className="mt-1 text-sm text-muted">
-                {alert.organismo} · {alert.ccaa} · {alert.anio || "sin año"} · {formatNumber(alert.nBeneficiarios)} sociedades
+                {alert.nif} · {alert.organismo} · {alert.ccaa} · {alert.anio}
               </p>
-              <div className="mt-3">
-                <Badge tone="terra">{vinculoLabel(alert.tipo)}</Badge>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Badge tone="terra">{roleLabel(alert.rol)}</Badge>
+                <Badge>Confianza {confidenceLabel(alert.confianza)}</Badge>
+                <NamesakeBadge lugares={alert.lugares} />
               </div>
+              <p className="mt-3 text-sm leading-relaxed">
+                <span className="font-semibold">{alert.politicoNombre}</span>
+                <PartyName partido={alert.partido} />. {alert.cuerpo}. Mandato {formatDate(alert.mandatoDesde)} –{" "}
+                {formatDate(alert.mandatoHasta)}. En la sociedad figura como {alert.adminCargo || "cargo no informado"} (
+                {alert.adminNombre}
+                <CompanyTenure alert={alert} />
+                ).
+              </p>
               <p className="mt-3 text-sm leading-relaxed">{alert.motivo}</p>
-              <ul className="mt-3 grid gap-3">
-                {alert.miembros.map((miembro) => (
-                  <li key={`${alert.id}-${miembro.beneficiarioId}`} className="rounded-2xl border border-line px-3 py-2">
-                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      {miembro.beneficiarioId ? (
-                        <Link
-                          href={`/beneficiarios/${miembro.beneficiarioId}`}
-                          className="font-semibold underline decoration-line underline-offset-2 hover:decoration-accent"
-                        >
-                          {miembro.nombre}
-                        </Link>
-                      ) : (
-                        <span className="font-semibold">{miembro.nombre}</span>
-                      )}
-                      <span className="text-sm tabular-nums">{formatEuro(miembro.importe)}</span>
-                    </div>
-                    <p className="text-sm text-muted">
-                      {miembro.nif} · {formatNumber(miembro.n)} subvenciones
-                      {miembro.fuenteUrl ? (
-                        <>
-                          {" · "}
-                          <ExternalLink href={miembro.fuenteUrl}>Anuncio en el BORME</ExternalLink>
-                        </>
-                      ) : null}
-                    </p>
-                    {miembro.items.length > 0 ? (
-                      <ul className="mt-2 flex flex-col gap-1">
-                        {miembro.items.map((item) => (
-                          <li key={item.concesionId}>
-                            <Link
-                              href={`/concesiones/${item.concesionId}`}
-                              className="text-sm underline decoration-line underline-offset-2 hover:decoration-accent"
-                            >
-                              {formatEuro(item.importe)} el {formatDate(item.fecha)}
-                            </Link>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
+              <p className="mt-2 text-sm">
+                <a
+                  href={alert.fuenteUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-semibold underline decoration-line underline-offset-2 hover:decoration-accent"
+                >
+                  Fuente publicada
+                </a>
+                <span className="text-muted"> · {alert.fuente}</span>
+              </p>
+              <ul className="mt-3 divide-y divide-line rounded-2xl border border-line">
+                {alert.items.map((item) => (
+                  <li
+                    key={item.concesionId}
+                    className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:items-baseline sm:justify-between"
+                  >
+                    <GrantLink id={item.concesionId}>
+                      {`${formatEuro(item.importe)} el ${formatDate(item.fecha)}`}
+                    </GrantLink>
+                    <span className="text-muted sm:max-w-[60%] sm:text-right">{item.titulo}</span>
                   </li>
                 ))}
               </ul>
