@@ -12,6 +12,7 @@ import { listVinculosBeneficiario, type VinculoAlert } from "@/lib/alerts";
 import { guard } from "@/lib/db";
 import { formatDate, formatEuro, formatNumber } from "@/lib/format";
 import { parseFilters, type SearchParams } from "@/lib/params";
+import { ContratosPublicos } from "@/components/contratos-publicos";
 import { getBeneficiario, searchConcesiones, type Concesion } from "@/lib/queries";
 
 type Params = { id: string };
@@ -215,6 +216,7 @@ const BeneficiarioPage = async ({
           <DataTable data={loaded.found.territorios} firstColumn="Territorio" />
         </figure>
       </div>
+      <ContratosPublicos nif={row.nif} />
       <h2 className="mt-10 font-display text-3xl">Todas las concesiones</h2>
       <div className="mt-4">
         <DataView

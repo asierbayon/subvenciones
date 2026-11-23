@@ -35,6 +35,12 @@ const signals = [
     table: "alert_directa",
   },
   {
+    href: "/alertas/contratos",
+    title: "Contratos públicos",
+    text: "El mismo NIF cobra una ayuda y se adjudica un contrato del mismo organismo, o de la misma administración si el contrato es menor o no salió a convocatoria abierta.",
+    table: "alert_contrato",
+  },
+  {
     href: "/alertas/vinculos",
     title: "Vínculos políticos",
     text: "Sociedades cuyo administrador coincide con un cargo electo o un alto cargo del organismo que concede la ayuda.",
@@ -51,6 +57,7 @@ const signalCount = (
     calendario: number | null;
     benford: number | null;
     directa: number | null;
+    contratos: number | null;
     vinculo: number | null;
   },
 ) => {
@@ -87,6 +94,12 @@ const signalCount = (
       return "Sin calcular";
     }
     return `${counts.directa.toLocaleString("es-ES")} organismos con esa pista`;
+  }
+  if (table === "alert_contrato") {
+    if (counts.contratos === null) {
+      return "Sin calcular";
+    }
+    return `${counts.contratos.toLocaleString("es-ES")} indicadores`;
   }
   if (table === "alert_vinculo") {
     if (counts.vinculo === null) {
@@ -126,8 +139,9 @@ const AlertasPage = async () => {
     const calendario = await countTable("SELECT COUNT(*) AS n FROM alert_calendario");
     const benford = await countTable("SELECT COUNT(*) AS n FROM alert_benford WHERE alerta = 1");
     const directa = await countTable("SELECT COUNT(*) AS n FROM alert_directa");
+    const contratos = await countTable("SELECT COUNT(*) AS n FROM alert_contrato");
     const vinculo = await countTable("SELECT COUNT(*) AS n FROM alert_vinculo");
-    return { fraccion, concentracion, recurrentes, calendario, benford, directa, vinculo };
+    return { fraccion, concentracion, recurrentes, calendario, benford, directa, contratos, vinculo };
   });
   if (counts === "missing") {
     return <SetupNeeded />;

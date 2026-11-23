@@ -8,6 +8,7 @@ import { guard } from "@/lib/db";
 import { formatDate, formatEuro } from "@/lib/format";
 import { formatNumber } from "@/lib/format";
 import { parseFilters, type SearchParams } from "@/lib/params";
+import { ContratosPublicos } from "@/components/contratos-publicos";
 import { getFacets, searchConcesiones, type Concesion } from "@/lib/queries";
 
 const columns: Column<Concesion>[] = [
@@ -93,6 +94,7 @@ const ConcesionesPage = async ({ searchParams }: { searchParams: Promise<SearchP
         showInstrumento
         importeHint="Importe"
       />
+      {filters.organismo ? <ContratosPublicos organismo={filters.organismo} /> : null}
       <DataView
         rows={loaded.page.rows}
         columns={columns}
