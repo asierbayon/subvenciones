@@ -2219,11 +2219,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--gap", type=float, default=0.12)
     parser.add_argument("--compact", action="store_true")
     parser.add_argument("--limit", type=int, default=40)
+    parser.add_argument("--db", default="", help="Ruta alternativa del extracto SQLite")
     return parser.parse_args(argv)
 
 
 def main() -> None:
+    global BORME_PATH
     args = parse_args(sys.argv[1:])
+    if args.db:
+        BORME_PATH = Path(args.db)
     if args.self_check or args.command is None and "--self-check" in sys.argv:
         self_check()
         if args.command is None:
