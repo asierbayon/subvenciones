@@ -67,7 +67,7 @@ const ConcesionPage = async ({ params }: { params: Promise<Params> }) => {
           label="Beneficiario"
           value={
             row.beneficiarioId ? (
-              <Link href={`/beneficiarios/${row.beneficiarioId}`} className="underline decoration-line underline-offset-2 hover:decoration-accent">
+              <Link href={`/beneficiarios/${row.beneficiarioId}`} className="xp-link font-normal">
                 {row.beneficiarioNombre}
               </Link>
             ) : (
@@ -85,7 +85,7 @@ const ConcesionPage = async ({ params }: { params: Promise<Params> }) => {
           label="Convocatoria"
           value={
             row.codigoBdns ? (
-              <Link href={`/convocatorias/${row.codigoBdns}`} className="underline decoration-line underline-offset-2 hover:decoration-accent">
+              <Link href={`/convocatorias/${row.codigoBdns}`} className="xp-link font-normal">
                 {row.titulo}
               </Link>
             ) : (

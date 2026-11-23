@@ -22,8 +22,8 @@ const rolLabel = (rol: string, kind: string) => {
 const Ficha = ({ ficha }: { ficha: RegistroFicha }) => {
   if (ficha.empty) {
     return (
-      <section className="mt-8 rounded-3xl border border-line bg-elev p-4" aria-labelledby="registro-mercantil">
-        <h2 id="registro-mercantil" className="font-display text-3xl">
+      <section className="mt-8 xp-card" aria-labelledby="registro-mercantil">
+        <h2 id="registro-mercantil" className="xp-heading xp-heading-lg">
           Registro mercantil
         </h2>
         <p className="mt-2 text-sm leading-relaxed text-muted">
@@ -35,8 +35,8 @@ const Ficha = ({ ficha }: { ficha: RegistroFicha }) => {
   }
   if (ficha.confianza === "ambigua") {
     return (
-      <section className="mt-8 rounded-3xl border border-line bg-elev p-4" aria-labelledby="registro-mercantil">
-        <h2 id="registro-mercantil" className="font-display text-3xl">
+      <section className="mt-8 xp-card" aria-labelledby="registro-mercantil">
+        <h2 id="registro-mercantil" className="xp-heading xp-heading-lg">
           Registro mercantil
         </h2>
         <div className="mt-3">
@@ -53,7 +53,7 @@ const Ficha = ({ ficha }: { ficha: RegistroFicha }) => {
   return (
     <section className="mt-8" aria-labelledby="registro-mercantil">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id="registro-mercantil" className="font-display text-3xl">
+        <h2 id="registro-mercantil" className="xp-heading xp-heading-lg">
           Registro mercantil
         </h2>
         <Badge tone={ficha.confianza === "alta" ? "accent" : "neutral"}>{confianzaLabel(ficha.confianza)}</Badge>
@@ -66,7 +66,7 @@ const Ficha = ({ ficha }: { ficha: RegistroFicha }) => {
       {ficha.senales.length > 0 ? (
         <p className="mt-3 text-sm">
           Aparece en{" "}
-          <Link href="/alertas/sociedades" className="font-semibold underline decoration-line underline-offset-2 hover:decoration-accent">
+          <Link href="/alertas/sociedades" className="xp-link">
             sociedades recientes o de poco capital
           </Link>
           : {ficha.senales.join(", ")}.
@@ -98,7 +98,7 @@ const Ficha = ({ ficha }: { ficha: RegistroFicha }) => {
       {ficha.personas.length > 0 ? (
         <div className="mt-4">
           <h3 className="text-sm font-semibold tracking-wide text-muted uppercase">Administradores y socio único</h3>
-          <ul className="mt-2 divide-y divide-line rounded-2xl border border-line">
+          <ul className="mt-2 xp-inset-list">
             {ficha.personas.map((persona) => (
               <li key={`${persona.rol}-${persona.nombre}`} className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:justify-between">
                 <span className="font-semibold">{persona.nombre}</span>
@@ -111,10 +111,10 @@ const Ficha = ({ ficha }: { ficha: RegistroFicha }) => {
       {ficha.relacionadas.length > 0 ? (
         <div className="mt-4">
           <h3 className="text-sm font-semibold tracking-wide text-muted uppercase">Otras sociedades del volcado</h3>
-          <ul className="mt-2 divide-y divide-line rounded-2xl border border-line">
+          <ul className="mt-2 xp-inset-list">
             {ficha.relacionadas.map((item) => (
               <li key={item.id} className="px-3 py-2 text-sm">
-                <Link href={`/beneficiarios/${item.id}`} className="font-semibold underline decoration-line underline-offset-2 hover:decoration-accent">
+                <Link href={`/beneficiarios/${item.id}`} className="xp-link">
                   {item.nombre}
                 </Link>
                 <span className="text-muted"> · {item.nif} · {item.detalle}</span>

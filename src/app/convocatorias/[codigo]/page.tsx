@@ -22,7 +22,7 @@ const columns: Column<Concesion>[] = [
     sortKey: "beneficiario",
     cell: (row) =>
       row.beneficiarioId ? (
-        <Link href={`/beneficiarios/${row.beneficiarioId}`} className="font-semibold underline decoration-line underline-offset-2 hover:decoration-accent">
+        <Link href={`/beneficiarios/${row.beneficiarioId}`} className="xp-link">
           {row.beneficiarioNombre}
         </Link>
       ) : (
@@ -41,7 +41,7 @@ const columns: Column<Concesion>[] = [
     sortKey: "importe",
     align: "right",
     cell: (row) => (
-      <Link href={`/concesiones/${row.id}`} className="tabular-nums underline decoration-line underline-offset-2 hover:decoration-accent">
+      <Link href={`/concesiones/${row.id}`} className="xp-link tabular-nums font-normal">
         {formatEuro(row.importe)}
       </Link>
     ),
@@ -140,7 +140,7 @@ const ConvocatoriaPage = async ({
         </p>
       ) : null}
       <ContratosPublicos organismo={row.organismo} exact />
-      <h2 className="mt-10 font-display text-3xl">Concesiones de esta convocatoria</h2>
+      <h2 className="mt-10 xp-heading xp-heading-lg">Concesiones de esta convocatoria</h2>
       <div className="mt-4">
         <DataView
           rows={loaded.grants.rows}

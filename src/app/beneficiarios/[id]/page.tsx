@@ -50,7 +50,7 @@ const VinculoBlock = ({ rows }: { rows: VinculoAlert[] }) => {
   }
   return (
     <section className="mt-6" aria-label="Vínculos políticos">
-      <h2 className="font-display text-3xl">Vínculos políticos</h2>
+      <h2 className="xp-heading xp-heading-lg">Vínculos políticos</h2>
       <div className="mt-3">
         <AlertBanner>
           El nombre del administrador coincide con un cargo público del órgano que concede, por encima del 85 % de
@@ -59,7 +59,7 @@ const VinculoBlock = ({ rows }: { rows: VinculoAlert[] }) => {
       </div>
       <ul className="grid gap-3">
         {rows.map((alert) => (
-          <li key={alert.id} className="rounded-3xl border border-line bg-elev p-4">
+          <li key={alert.id} className="xp-group">
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="terra">{roleLabel(alert.rol)}</Badge>
               <Badge>Confianza {Math.round(alert.confianza * 100).toLocaleString("es-ES")} %</Badge>
@@ -75,13 +75,13 @@ const VinculoBlock = ({ rows }: { rows: VinculoAlert[] }) => {
                 href={alert.fuenteUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="font-semibold underline decoration-line underline-offset-2 hover:decoration-accent"
+                className="xp-link"
               >
                 Fuente publicada
               </a>
             </p>
             <p className="mt-2 text-sm">
-              <Link href="/alertas/vinculos" className="font-semibold underline decoration-line underline-offset-2 hover:decoration-accent">
+              <Link href="/alertas/vinculos" className="xp-link">
                 Ver el indicador completo
               </Link>
             </p>
@@ -105,7 +105,7 @@ const columns: Column<Concesion>[] = [
     sortKey: "importe",
     align: "right",
     cell: (row) => (
-      <Link href={`/concesiones/${row.id}`} className="font-semibold tabular-nums underline decoration-line underline-offset-2 hover:decoration-accent">
+      <Link href={`/concesiones/${row.id}`} className="xp-link tabular-nums">
         {formatEuro(row.importe)}
       </Link>
     ),
@@ -120,7 +120,7 @@ const columns: Column<Concesion>[] = [
     header: "Convocatoria",
     cell: (row) =>
       row.codigoBdns ? (
-        <Link href={`/convocatorias/${row.codigoBdns}`} className="underline decoration-line underline-offset-2 hover:decoration-accent">
+        <Link href={`/convocatorias/${row.codigoBdns}`} className="xp-link font-normal">
           {row.titulo}
         </Link>
       ) : (
@@ -207,19 +207,19 @@ const BeneficiarioPage = async ({
       <RegistroMercantil beneficiarioId={row.id} nif={row.nif} />
       <VinculoBlock rows={loaded.vinculos} />
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
-        <figure className="rounded-3xl border border-line bg-elev p-4">
-          <figcaption className="mb-2 font-display text-2xl">Importe por año</figcaption>
+        <figure className="xp-group">
+          <figcaption className="mb-2 xp-heading">Importe por año</figcaption>
           <YearChart data={loaded.found.years} />
           <YearTable data={loaded.found.years} />
         </figure>
-        <figure className="rounded-3xl border border-line bg-elev p-4">
-          <figcaption className="mb-2 font-display text-2xl">De dónde llega</figcaption>
+        <figure className="xp-group">
+          <figcaption className="mb-2 xp-heading">De dónde llega</figcaption>
           <HorizontalBars data={loaded.found.territorios} />
           <DataTable data={loaded.found.territorios} firstColumn="Territorio" />
         </figure>
       </div>
       <ContratosPublicos nif={row.nif} />
-      <h2 className="mt-10 font-display text-3xl">Todas las concesiones</h2>
+      <h2 className="mt-10 xp-heading xp-heading-lg">Todas las concesiones</h2>
       <div className="mt-4">
         <DataView
           rows={loaded.grants.rows}
