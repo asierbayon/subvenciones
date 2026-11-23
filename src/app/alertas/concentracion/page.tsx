@@ -115,8 +115,9 @@ const ConcentracionPage = async ({ searchParams }: { searchParams: Promise<Alert
 
       <h2 className="mt-12 font-display text-3xl">Ganadores que repiten</h2>
       <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
-        El mismo NIF cobra subvenciones dinerarias de ese organismo en al menos tres años distintos del volcado. Una
-        relación estable puede ser una subvención nominativa prevista en el presupuesto.
+        Se listan solo entidades privadas que no son universidades, con al menos cuatro años y un millón de euros
+        acumulados. Las transferencias anuales a otra administración o a una universidad quedan fuera: son el
+        presupuesto ordinario, no una señal.
       </p>
       {loaded.recurrentes.rows.length === 0 ? (
         <EmptyState>Ningún beneficiario recurrente con estos filtros.</EmptyState>

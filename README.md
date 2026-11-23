@@ -86,7 +86,7 @@ El script enriquece tres campos que el CSV no trae, y la interfaz los marca como
 
 ## Limitaciones
 
-- No se puede saber qué convocatorias están abiertas hoy: no hay fecha de inicio ni de fin del plazo. La vista «Abiertas ahora» lista las registradas en los 60 días anteriores al cierre del volcado y enlaza con la [ficha oficial](https://www.infosubvenciones.es/bdnstrans/GE/es/convocatorias/), que sí publica el plazo.
+- No se puede saber qué convocatorias están abiertas hoy: no hay fecha de inicio ni de fin del plazo. La ficha oficial sí lo publica: [infosubvenciones.es](https://www.infosubvenciones.es/bdnstrans/GE/es/convocatorias/).
 - No hay personas físicas. Las concesiones del volcado empiezan en 2018 aunque haya convocatorias desde 2008.
 - Cerca del 1,4 % de las convocatorias queda en «No determinada»: homónimos (Torrent está en Girona y en Valencia) y nombres que el padrón no resuelve. Los bilingües con barra (`ELCHE/ELX`, `ALCOY/ALCOI`) sí se asignan.
 - Los importes de garantías y préstamos no son una entrega de dinero. El panel abre en «Solo subvenciones» y permite sumar todos los instrumentos.
@@ -101,13 +101,13 @@ Los indicadores se calculan encima del índice, sin volver a leer los CSV:
 python3 pipeline/alerts.py fraccionamiento
 ```
 
-Son señales para revisar expedientes, no pruebas de un incumplimiento. Hoy el primero es el fraccionamiento: el mismo NIF y el mismo organismo, con varias subvenciones dinerarias en poco tiempo justo por debajo de 15.000 €, 40.000 € o 200.000 €. Esos tres umbrales son, respectivamente, el contrato menor de servicios de la LCSP, el de obras, y el de minimis del Reglamento (UE) 1407/2013 (vigente en los años del volcado). No son topes de la Ley General de Subvenciones. Se descartan las rachas de un solo día y los bloques de más de seis concesiones, que parecen un programa y no un puñado de importes escondidos bajo la raya.
+Son señales para revisar expedientes, no pruebas de un incumplimiento. El fraccionamiento exige el mismo NIF privado y el mismo organismo, convocatorias distintas, importes no idénticos, y una mediana por encima del percentil 75 de lo que ese organismo concede a entidades privadas. La banda es el 90–100 % de 15.000 €, 40.000 € o 200.000 € en 90 días. La regla de suma exige piezas de al menos 50.000 € que juntas queden entre 190.000 € y 200.000 €. Si el mismo organismo repite el patrón con más de tres NIF en el mismo mes, se trata como un programa y se descarta. Esos umbrales son el contrato menor de servicios de la LCSP, el de obras, y el de minimis del Reglamento (UE) 1407/2013. No son topes de la Ley General de Subvenciones. Quedan fuera los pagos de una sola convocatoria, los NIF de administraciones (P, Q, S), las universidades y los bloques de más de cuatro concesiones. La lista se ordena por una puntuación de cercanía al umbral, número de convocatorias y rareza para ese organismo.
 
 ```bash
 python3 pipeline/alerts.py concentracion
 ```
 
-La concentración usa solo subvenciones dinerarias. El HHI es la suma de los cuadrados de la cuota de cada beneficiario. Se marca un organismo con al menos 20 concesiones y 4 beneficiarios si el HHI llega a 0,25 o si el mayor perceptor se lleva la mitad o más. 0,25 es la escala que el Departamento de Justicia de EE. UU. llama «muy concentrado» en un mercado; aquí es una regla de lectura, no una infracción. Los ganadores recurrentes son NIF que cobran de ese organismo en tres años distintos o más.
+La concentración usa solo subvenciones dinerarias. El HHI es la suma de los cuadrados de la cuota de cada beneficiario. Se marca un organismo con al menos 20 concesiones y 4 beneficiarios si el HHI llega a 0,25 o si el mayor perceptor se lleva la mitad o más. 0,25 es la escala que el Departamento de Justicia de EE. UU. llama «muy concentrado» en un mercado; aquí es una regla de lectura, no una infracción. Los ganadores recurrentes que se listan son entidades privadas, no universidades, con al menos cuatro años y un millón de euros acumulados. El resto de repeticiones anuales queda fuera de la lista.
 
 ```bash
 python3 pipeline/alerts.py calendario
@@ -158,6 +158,36 @@ La pantalla lo etiqueta como indicador. Cada ficha dice qué regla ha saltado, e
 Sobre este índice (concesiones a personas jurídicas, 2018–marzo de 2022) la pasada leyó 3.986.699 anuncios y guardó 1.202.741 adjudicaciones de 94.653 NIF, el 10,6 % de los 894.548 beneficiarios con NIF. De 2.324 organismos que conceden a alguien con NIF, 677 (29,1 %) tienen el mismo nombre normalizado que un órgano de la PLACSP y 211 (9,1 %) apuntan a un único DIR3; 14 nombres son ambiguos. Salen 31.995 indicadores: 7.386 del mismo órgano, 1.060 de la jerarquía y 23.549 de la misma administración (estos solo si el contrato es menor o no salió a convocatoria abierta). 27.711 son contratos menores.
 
 Tres casos reales: Ferias Jaén S.A. (A23398001) cobra de la Diputación Provincial de Jaén y el 27/12/2019 la presidencia de esa diputación le adjudica un contrato menor de 111.520 €, 35 días después de una concesión. La Fundación APIP-ACAM (G65529661) recibe ayuda del Ayuntamiento de Barcelona y el mismo 25/01/2018 el Ajuntament de Barcelona le adjudica por negociado sin publicidad un contrato de 1,4 millones, publicado en el canal agregado. Gestión Insular de Deporte, Cultura y Ocio (A38615191) cobra del Cabildo Insular de Tenerife y ese cabildo, a través de su dirección insular de recursos humanos, le adjudica un contrato menor el mismo día.
+
+```bash
+python3 pipeline/politicos.py
+python3 pipeline/vinculos.py
+```
+
+Vínculos políticos cruza dos cosas: un cargo público y el administrador de la sociedad que cobra. El cargo sale de listas abiertas. El administrador tiene que estar en la tabla `borme_admins(nif, nombre, cargo, desde, hasta)`, que construye otro proceso (el BORME) y que este comando no rellena. Sin esa tabla el comando termina sin escribir indicadores. `pipeline/fixtures/borme_admins.csv` es un ejemplo mínimo para probar el cruce antes de que existan los administradores reales:
+
+```bash
+python3 pipeline/vinculos.py --fixture
+python3 pipeline/vinculos.py --self-check
+```
+
+Solo se publica una coincidencia si la confianza llega a 0,85. Hace falta el nombre y los dos apellidos (o un solo apellido largo y poco común), que el nombre no esté en tres o más órganos, que la subvención caiga dentro del mandato y del cargo societario, y que el órgano que concede sea el del cargo: el municipio del concejal o del alcalde, el cabildo del consejero insular, el parlamento del diputado autonómico, o el departamento del alto cargo. Un apoderado baja la nota. Si el nombramiento societario no trae fechas, también. Por debajo del umbral no se guarda la fila.
+
+En la ingesta de noviembre de 2026 la tabla `politico` quedó en unas 152.000 filas, unos 63 MB:
+
+| Fuente | Qué entra | Cobertura en ese cruce |
+| --- | --- | --- |
+| Ministerio del Interior, ficheros de candidatos electos (municipales 24 may 2015 y 26 may 2019) | Concejales. El fichero 04 son los municipios de lista cerrada; el 12, los de lista abierta (menos de 250 habitantes). | 67.185 electos en 2015 (8.091 municipios) y 66.679 en 2019 (8.120). No se guardan DNI ni fecha de nacimiento. |
+| El mismo ministerio, cabildos insulares de esas dos fechas | Miembros electos del cabildo. | 150 en 2015 y 156 en 2019, siete islas. |
+| Ministerio de Política Territorial, registro de alcaldes (xlsx de los mandatos 2015-2019 y 2019-2023) | Titular de la alcaldía, con posesión y baja. | 8.822 y 8.682 filas. Casi todas casan con un concejal electo del mismo municipio (8.657 y 8.494). |
+
+Las fechas de un concejal son las del mandato (13 jun 2015 – 14 jun 2019, y 15 jun 2019 – 16 jun 2023), no el día en que esa persona tomó posesión o cesó. Quien entra a mitad de mandato por una renuncia no está, y quien dimite sigue figurando hasta el final del mandato. En los alcaldes sí constan posesión y baja.
+
+El Interior no publica el fichero de candidatos de las elecciones autonómicas: se lo pidieron y respondió que es competencia de cada comunidad. Los CSV autonómicos que hay en datos.gob.es para este periodo son recuentos de escaños o de votos, no listas nominales reutilizables. El módulo acepta un diputado autonómico si otra carga lo inserta en `politico` con `rol = diputado`, y solo lo cruza con ayudas del propio parlamento, no con todas las de la comunidad. Los altos cargos se cruzan solo si el nombre del departamento aparece en el órgano que concede. Esta ingesta no trae una nómina estatal de altos cargos: el BOE publica los nombramientos como texto diario, no como padrón.
+
+El Tribunal de Cuentas fiscaliza la contabilidad de los partidos en PDF. No hay un fichero reutilizable de donantes identificables para 2018-2022, y una donación no dice que el administrador sea cargo del órgano que concede. No se usa.
+
+El indicador es solo eso. Un homónimo con los mismos apellidos puede no ser el cargo. No dice que votara la ayuda, que estuviera en la junta de gobierno ni que el expediente incumpla la Ley General de Subvenciones. La ficha enlaza la fuente oficial. El área de descargas del Interior a veces exige un reto anti-bots; si el zip falla, el script baja los mismos `.DAT` desde la copia íntegra de [JaimeObregon/infoelectoral](https://github.com/JaimeObregon/infoelectoral). La cita de cada persona sigue siendo la página del ministerio.
 
 ## Arranque
 

@@ -39,12 +39,14 @@ THRESHOLDS: tuple[tuple[float, str, str], ...] = (
     ),
 )
 
-BAND_LOW = 0.80
+BAND_LOW = 0.90
 WINDOW_DAYS = 90
 SUM_WINDOW_DAYS = 180
-SUM_MIN_PIECE = 0.15
+SUM_FLOOR = 190_000
+SUM_MIN_PIECE = 50_000
 SUM_MIN_COUNT = 2
-MAX_COUNT = 6
+MAX_COUNT = 4
+PUBLIC_NIF = frozenset("PQS")
 
 
 def log(message: str) -> None:
@@ -117,7 +119,9 @@ def ensure_fraccion_schema(connection: sqlite3.Connection) -> None:
           anio INTEGER NOT NULL,
           n INTEGER NOT NULL,
           n_convocatorias INTEGER NOT NULL,
-          importe_suma REAL NOT NULL
+          importe_suma REAL NOT NULL,
+          puntuacion REAL NOT NULL,
+          mediana_organismo REAL NOT NULL
         );
         CREATE TABLE alert_fraccion_item (
           alert_id INTEGER NOT NULL,
@@ -132,7 +136,65 @@ def ensure_fraccion_schema(connection: sqlite3.Connection) -> None:
     )
 
 
+def private_beneficiary(nif: str, nombre: str) -> bool:
+    if not nif or nif[0] in PUBLIC_NIF:
+        return False
+    upper = nombre.upper()
+    if "UNIVERSIDAD" in upper or "UNIVERSITAT" in upper:
+        return False
+    return True
+
+
+def is_flat(rows: list[dict]) -> bool:
+    amounts = [row["importe"] for row in rows]
+    return max(amounts) <= min(amounts) * 1.02
+
+
+def median_amount(values) -> float:
+    ordered = sorted(values)
+    return ordered[len(ordered) // 2]
+
+
+def load_body_p75(connection: sqlite3.Connection) -> dict[str, float]:
+    """75th percentile of cash grants to private beneficiaries, per body.
+
+    Bodies with fewer than 15 such grants are omitted: their usual level is too thin to compare.
+    """
+    log("Percentil 75 de cada organismo (solo beneficiarios privados)")
+    cursor = connection.execute(
+        """
+        SELECT organismo_norm, importe
+        FROM concesiones
+        WHERE instrumento_slug = 'subvencion' AND importe > 0 AND nif != ''
+          AND substr(nif, 1, 1) NOT IN ('P', 'Q', 'S')
+          AND upper(beneficiario_nombre) NOT LIKE '%UNIVERSIDAD%'
+          AND upper(beneficiario_nombre) NOT LIKE '%UNIVERSITAT%'
+          AND organismo_norm != ''
+        ORDER BY organismo_norm, importe
+        """
+    )
+    percentiles: dict[str, float] = {}
+    current: str | None = None
+    values: list[float] = []
+
+    def flush() -> None:
+        if current is None or len(values) < 15:
+            return
+        percentiles[current] = values[int(len(values) * 0.75)]
+
+    for organismo_norm, importe in cursor:
+        if organismo_norm != current:
+            flush()
+            current = organismo_norm
+            values = []
+        values.append(float(importe))
+    flush()
+    log(f"Organismos con distribución usable: {len(percentiles)}")
+    return percentiles
+
+
 def build_fraccionamiento(connection: sqlite3.Connection) -> int:
+    body_p75 = load_body_p75(connection)
     log("Preparando subvenciones dinerarias con NIF y fecha")
     connection.execute("DROP TABLE IF EXISTS alert_subv_work")
     connection.execute(
@@ -174,8 +236,8 @@ def build_fraccionamiento(connection: sqlite3.Connection) -> int:
             INSERT INTO alert_fraccion (
               id, regla, umbral, umbral_codigo, motivo, nif, beneficiario_id, nombre,
               organismo, organismo_norm, ccaa, fecha_inicio, fecha_fin, anio, n,
-              n_convocatorias, importe_suma
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+              n_convocatorias, importe_suma, puntuacion, mediana_organismo
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             alerts,
         )
@@ -190,18 +252,47 @@ def build_fraccionamiento(connection: sqlite3.Connection) -> int:
         alerts.clear()
         items.clear()
 
+    def eligible(rows: list[dict]) -> tuple[int, float] | None:
+        if not rows or not private_beneficiary(rows[0]["nif"], rows[0]["nombre"]):
+            return None
+        if len(set(row["day"] for row in rows)) < 2 or is_flat(rows):
+            return None
+        calls = {row["id_convocatoria"] for row in rows if row["id_convocatoria"]}
+        if len(calls) < 2:
+            return None
+        usual = body_p75.get(rows[0]["organismo_norm"])
+        if usual is None:
+            return None
+        cluster_median = median_amount(row["importe"] for row in rows)
+        if cluster_median < usual:
+            return None
+        return len(calls), usual
+
     def emit(regla: str, threshold: float, code: str, reason: str, rows: list[dict]) -> None:
         nonlocal next_id
-        dates = [row["day"] for row in rows]
-        if len(set(dates)) < 2:
+        gate = eligible(rows)
+        if gate is None:
             return
-        convocatorias = {row["id_convocatoria"] for row in rows if row["id_convocatoria"]}
-        calls = len(convocatorias)
-        if calls <= 1:
-            scope = "Todas salen de la misma convocatoria: puede ser un pago partido previsto en las bases."
-        else:
-            scope = f"Salen de {calls} convocatorias distintas del mismo organismo."
+        calls, usual = gate
+        dates = [row["day"] for row in rows]
         amount = sum(row["importe"] for row in rows)
+        cluster_median = median_amount(row["importe"] for row in rows)
+        span = (max(dates) - min(dates)).days
+        proximity = sum(min(row["importe"] / threshold, 1.0) for row in rows) / len(rows)
+        proximity_points = max(0.0, (proximity - BAND_LOW) / (1 - BAND_LOW)) * 40
+        call_points = min(calls, 4) * 8
+        elevation = min(max(cluster_median / usual - 1, 0), 2) * 15
+        tightness = 15 if span <= 30 else 8 if span <= 60 else 0
+        puntuacion = round(proximity_points + call_points + elevation + tightness, 1)
+        def euros(value: float) -> str:
+            return f"{value:,.0f}".replace(",", ".")
+
+        motivo = (
+            f"{reason} Salen de {calls} convocatorias distintas, en {span} días. "
+            f"La mediana de este grupo ({euros(cluster_median)} €) supera el percentil 75 de lo que "
+            f"este organismo concede a entidades privadas ({euros(usual)} €). "
+            f"Puntuación {puntuacion:.0f} de 100: acerca al umbral, convocatorias distintas y rareza para ese organismo."
+        )
         alert_id = next_id
         next_id += 1
         first = rows[0]
@@ -211,7 +302,7 @@ def build_fraccionamiento(connection: sqlite3.Connection) -> int:
                 regla,
                 threshold,
                 code,
-                f"{reason} {scope}",
+                motivo,
                 first["nif"],
                 first["beneficiario_id"],
                 first["nombre"],
@@ -224,6 +315,8 @@ def build_fraccionamiento(connection: sqlite3.Connection) -> int:
                 len(rows),
                 calls,
                 amount,
+                puntuacion,
+                usual,
             )
         )
         for row in rows:
@@ -258,17 +351,17 @@ def build_fraccionamiento(connection: sqlite3.Connection) -> int:
         pieces = [
             (row["day"], row)
             for row in group
-            if de_minimis * SUM_MIN_PIECE <= row["importe"] < de_minimis
+            if SUM_MIN_PIECE <= row["importe"] < de_minimis
         ]
         for cluster in clusters(pieces, SUM_WINDOW_DAYS, SUM_MIN_COUNT):
             rows = [item[1] for item in cluster]
             total = sum(row["importe"] for row in rows)
-            if de_minimis * BAND_LOW <= total < de_minimis:
+            if SUM_FLOOR <= total < de_minimis:
                 emit(
                     "suma",
                     de_minimis,
                     "de_minimis",
-                    "Varias subvenciones del mismo organismo, cada una por debajo del de minimis de 200.000 €, suman una cifra justo inferior a ese techo en menos de 180 días.",
+                    "Varias subvenciones de al menos 50.000 €, de convocatorias distintas, suman entre 190.000 € y 200.000 € en menos de 180 días.",
                     rows,
                 )
 
@@ -304,9 +397,51 @@ def build_fraccionamiento(connection: sqlite3.Connection) -> int:
     if bucket:
         consume(bucket)
     flush()
+    connection.execute(
+        """
+        DELETE FROM alert_fraccion_item
+        WHERE alert_id IN (
+          SELECT id FROM alert_fraccion
+          WHERE regla = 'suma' AND importe_suma < ?
+        )
+        """,
+        (SUM_FLOOR,),
+    )
+    connection.execute(
+        "DELETE FROM alert_fraccion WHERE regla = 'suma' AND importe_suma < ?",
+        (SUM_FLOOR,),
+    )
+    connection.execute(
+        """
+        DELETE FROM alert_fraccion_item
+        WHERE alert_id IN (
+          SELECT a.id FROM alert_fraccion a
+          WHERE (
+            SELECT COUNT(DISTINCT b.nif) FROM alert_fraccion b
+            WHERE b.organismo_norm = a.organismo_norm
+              AND b.umbral_codigo = a.umbral_codigo
+              AND substr(b.fecha_inicio, 1, 7) = substr(a.fecha_inicio, 1, 7)
+          ) > 3
+        )
+        """
+    )
+    connection.execute(
+        """
+        DELETE FROM alert_fraccion
+        WHERE id IN (
+          SELECT a.id FROM alert_fraccion a
+          WHERE (
+            SELECT COUNT(DISTINCT b.nif) FROM alert_fraccion b
+            WHERE b.organismo_norm = a.organismo_norm
+              AND b.umbral_codigo = a.umbral_codigo
+              AND substr(b.fecha_inicio, 1, 7) = substr(a.fecha_inicio, 1, 7)
+          ) > 3
+        )
+        """
+    )
     connection.executescript(
         """
-        CREATE INDEX idx_fraccion_filter ON alert_fraccion(ccaa, anio, importe_suma DESC);
+        CREATE INDEX idx_fraccion_filter ON alert_fraccion(ccaa, anio, puntuacion DESC);
         CREATE INDEX idx_fraccion_org ON alert_fraccion(organismo_norm, importe_suma DESC);
         CREATE INDEX idx_fraccion_item ON alert_fraccion_item(alert_id);
         """

@@ -1,0 +1,18 @@
+id,nif,empresa,administracion,departamento,organo,organismo,ccaa,fecha,importe,titulo,codigo_bdns,beneficiario_id
+1,B0000014A,Lizarraga Zerbitzuak SL,Abla,AYUNTAMIENTO DE ABLA,,AYUNTAMIENTO DE ABLA,Andalucía,2020-04-15,18000,Ayuda al comercio de proximidad,100001,1
+2,B0000014A,Lizarraga Zerbitzuak SL,Abla,AYUNTAMIENTO DE ABLA,,AYUNTAMIENTO DE ABLA,Andalucía,2021-11-02,22000,Ayuda a la eficiencia energética,100002,1
+3,B0000015B,Urrutia Mandatos SL,Abla,AYUNTAMIENTO DE ABLA,,AYUNTAMIENTO DE ABLA,Andalucía,2020-05-01,4000,Subvención de actividades,100003,2
+4,B0000021C,García López Hostelería SL,Abla,AYUNTAMIENTO DE ABLA,,AYUNTAMIENTO DE ABLA,Andalucía,2020-02-02,9000,Ayuda a terrazas,100004,3
+5,B0000022D,García López Obras SL,Abertura,AYUNTAMIENTO DE ABERTURA,,AYUNTAMIENTO DE ABERTURA,Extremadura,2020-09-09,11000,Rehabilitación de fachadas,100005,4
+6,B0000031E,Navarro Sánchez Servicios SL,Abla,AYUNTAMIENTO DE ABLA,,AYUNTAMIENTO DE ABLA,Andalucía,2020-07-01,5000,Ayuda a asociaciones,100006,5
+7,B0000041F,Lizarraga Anterior SL,Abla,AYUNTAMIENTO DE ABLA,,AYUNTAMIENTO DE ABLA,Andalucía,2018-03-01,7000,Ayuda anterior al mandato,100007,6
+8,B0000051G,Goikoetxea Proiektuak SL,Abla,AYUNTAMIENTO DE ABLA,,AYUNTAMIENTO DE ABLA,Andalucía,2018-03-01,8000,Ayuda fuera del cargo societario,100008,7
+9,B0000061H,Belmonte Ferrer SL,DIPUTACIÓN PROVINCIAL DE ALMERÍA,DIPUTACIÓN PROVINCIAL DE ALMERÍA,,DIPUTACIÓN PROVINCIAL DE ALMERÍA,Andalucía,2020-04-01,15000,Ayuda de la diputación,100009,8
+10,B0000071I,De la Rosa García CB,Abla,AYUNTAMIENTO DE ABLA,,AYUNTAMIENTO DE ABLA,Andalucía,2020-08-01,6000,Ayuda a ferias,100010,9
+11,B0000081J,Iniciales SL,Abla,AYUNTAMIENTO DE ABLA,,AYUNTAMIENTO DE ABLA,Andalucía,2020-04-01,3000,Ayuda que no debe casar,100011,10
+12,B0000091K,Ortega Mendoza Insular SL,Cabildo Insular de Tenerife,CABILDO INSULAR DE TENERIFE,,CABILDO INSULAR DE TENERIFE,Canarias,2020-09-01,25000,Ayuda del cabildo,100012,11
+13,B0000091K,Ortega Mendoza Insular SL,Cabildo Insular de Gran Canaria,CABILDO INSULAR DE GRAN CANARIA,,CABILDO INSULAR DE GRAN CANARIA,Canarias,2020-10-01,25000,Ayuda de otro cabildo,100013,11
+14,B0000101L,Soler Prats Parlament SL,Junta de Andalucía,Parlamento de Andalucía,,Parlamento de Andalucía,Andalucía,2020-01-15,12000,Encomienda del parlamento,100014,12
+15,B0000101L,Soler Prats Parlament SL,Junta de Andalucía,Consejería de Educación y Deporte,,Consejería de Educación y Deporte,Andalucía,2020-03-01,12000,Beca de la consejería de educación,100015,12
+16,B0000111M,Ribas Colom Hacienda SL,Junta de Andalucía,"Consejería de Hacienda, Industria y Energía","Consejería de Hacienda, Industria y Energía","Consejería de Hacienda, Industria y Energía",Andalucía,2021-02-02,30000,Subvención de hacienda,100016,13
+17,B0000111M,Ribas Colom Hacienda SL,Junta de Andalucía,Consejería de Educación y Deporte,,Consejería de Educación y Deporte,Andalucía,2021-05-05,30000,Subvención de educación,100017,13
