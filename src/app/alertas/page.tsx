@@ -34,7 +34,68 @@ const signals = [
     text: "Proxy de título: organismos cuya subvención dice «concesión directa» o «nominativa». El fichero no trae el procedimiento.",
     table: "alert_directa",
   },
+  {
+    href: "/alertas/vinculos",
+    title: "Vínculos políticos",
+    text: "Sociedades cuyo administrador coincide con un cargo electo o un alto cargo del organismo que concede la ayuda.",
+    table: "alert_vinculo",
+  },
 ];
+
+const signalCount = (
+  table: string,
+  counts: {
+    fraccion: number | null;
+    concentracion: number | null;
+    recurrentes: number | null;
+    calendario: number | null;
+    benford: number | null;
+    directa: number | null;
+    vinculo: number | null;
+  },
+) => {
+  if (table === "alert_fraccion") {
+    if (counts.fraccion === null) {
+      return "Sin calcular";
+    }
+    return `${counts.fraccion.toLocaleString("es-ES")} indicadores`;
+  }
+  if (table === "alert_concentracion") {
+    if (counts.concentracion === null) {
+      return "Sin calcular";
+    }
+    const marked = `${counts.concentracion.toLocaleString("es-ES")} organismos marcados`;
+    if (counts.recurrentes === null) {
+      return marked;
+    }
+    return `${marked} · ${counts.recurrentes.toLocaleString("es-ES")} que repiten`;
+  }
+  if (table === "alert_calendario") {
+    if (counts.calendario === null) {
+      return "Sin calcular";
+    }
+    return `${counts.calendario.toLocaleString("es-ES")} indicadores`;
+  }
+  if (table === "alert_benford") {
+    if (counts.benford === null) {
+      return "Sin calcular";
+    }
+    return `${counts.benford.toLocaleString("es-ES")} organismos lejos de Benford`;
+  }
+  if (table === "alert_directa") {
+    if (counts.directa === null) {
+      return "Sin calcular";
+    }
+    return `${counts.directa.toLocaleString("es-ES")} organismos con esa pista`;
+  }
+  if (table === "alert_vinculo") {
+    if (counts.vinculo === null) {
+      return "Sin calcular";
+    }
+    return `${counts.vinculo.toLocaleString("es-ES")} indicadores`;
+  }
+  return "";
+};
 
 const countTable = async (sql: string) => {
   const db = await getDb();
@@ -65,7 +126,8 @@ const AlertasPage = async () => {
     const calendario = await countTable("SELECT COUNT(*) AS n FROM alert_calendario");
     const benford = await countTable("SELECT COUNT(*) AS n FROM alert_benford WHERE alerta = 1");
     const directa = await countTable("SELECT COUNT(*) AS n FROM alert_directa");
-    return { fraccion, concentracion, recurrentes, calendario, benford, directa };
+    const vinculo = await countTable("SELECT COUNT(*) AS n FROM alert_vinculo");
+    return { fraccion, concentracion, recurrentes, calendario, benford, directa, vinculo };
   });
   if (counts === "missing") {
     return <SetupNeeded />;
@@ -89,31 +151,7 @@ const AlertasPage = async () => {
             <Link href={signal.href} className="block rounded-3xl border border-line bg-elev p-5 hover:bg-highlight">
               <h2 className="font-display text-2xl">{signal.title}</h2>
               <p className="mt-2 text-sm leading-relaxed text-muted">{signal.text}</p>
-              <p className="mt-3 text-sm font-semibold text-accent">
-                {signal.table === "alert_fraccion" && counts.fraccion !== null
-                  ? `${counts.fraccion.toLocaleString("es-ES")} indicadores`
-                  : ""}
-                {signal.table === "alert_concentracion" && counts.concentracion !== null
-                  ? `${counts.concentracion.toLocaleString("es-ES")} organismos marcados`
-                  : ""}
-                {signal.table === "alert_concentracion" && counts.recurrentes !== null
-                  ? ` · ${counts.recurrentes.toLocaleString("es-ES")} que repiten`
-                  : ""}
-                {signal.table === "alert_fraccion" && counts.fraccion === null ? "Sin calcular" : ""}
-                {signal.table === "alert_concentracion" && counts.concentracion === null ? "Sin calcular" : ""}
-                {signal.table === "alert_calendario" && counts.calendario !== null
-                  ? `${counts.calendario.toLocaleString("es-ES")} indicadores`
-                  : ""}
-                {signal.table === "alert_calendario" && counts.calendario === null ? "Sin calcular" : ""}
-                {signal.table === "alert_benford" && counts.benford !== null
-                  ? `${counts.benford.toLocaleString("es-ES")} organismos lejos de Benford`
-                  : ""}
-                {signal.table === "alert_benford" && counts.benford === null ? "Sin calcular" : ""}
-                {signal.table === "alert_directa" && counts.directa !== null
-                  ? `${counts.directa.toLocaleString("es-ES")} organismos con esa pista`
-                  : ""}
-                {signal.table === "alert_directa" && counts.directa === null ? "Sin calcular" : ""}
-              </p>
+              <p className="mt-3 text-sm font-semibold text-accent">{signalCount(signal.table, counts)}</p>
             </Link>
           </li>
         ))}
