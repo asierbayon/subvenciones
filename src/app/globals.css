@@ -283,6 +283,23 @@ body {
   background: var(--xp-face);
 }
 
+.xp-toolbar .xp-input {
+  min-width: 0;
+  flex: 1;
+}
+
+.xp-tray-toggle {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #fff;
+}
+
 .xp-toolbar label {
   font-size: 11px;
 }

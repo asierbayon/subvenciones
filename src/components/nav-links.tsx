@@ -2,40 +2,21 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { cn } from "@/lib/utils";
-
-const LINKS = [
-  { href: "/", label: "Panel" },
-  { href: "/convocatorias", label: "Convocatorias" },
-  { href: "/concesiones", label: "Concesiones" },
-  { href: "/beneficiarios", label: "Beneficiarios" },
-  { href: "/alertas", label: "Alertas" },
-];
+import { isCurrent, MAIN_LINKS } from "@/components/xp-nav";
 
 export const NavLinks = () => {
   const pathname = usePathname();
 
   return (
-    <nav aria-label="Secciones">
-      <ul className="flex gap-1 overflow-x-auto pb-1 md:flex-col md:overflow-visible md:pb-0">
-        {LINKS.map((link) => {
-          const active = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
-          return (
-            <li key={link.href}>
-              <Link
-                href={link.href}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "block whitespace-nowrap rounded-full px-3 py-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-                  active ? "bg-accent text-accent-ink" : "text-ink hover:bg-highlight",
-                )}
-              >
-                {link.label}
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
+    <nav className="xp-menubar" aria-label="Secciones">
+      {MAIN_LINKS.map((link) => {
+        const active = isCurrent(link.href, pathname);
+        return (
+          <Link key={link.href} href={link.href} aria-current={active ? "page" : undefined}>
+            {link.label}
+          </Link>
+        );
+      })}
     </nav>
   );
 };
