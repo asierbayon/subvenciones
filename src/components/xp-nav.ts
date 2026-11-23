@@ -25,43 +25,6 @@ export const ALERT_LINKS: XpLink[] = [
   { href: "/alertas/registro", label: "Registro" },
 ];
 
-const TITLES: { prefix: string; title: string; exact?: boolean }[] = [
-  { prefix: "/", title: "Faro — Inicio", exact: true },
-  { prefix: "/buscar", title: "Faro — Buscador" },
-  { prefix: "/alertas/fraccionamiento", title: "Faro — Fraccionamiento" },
-  { prefix: "/alertas/concentracion", title: "Faro — Concentración" },
-  { prefix: "/alertas/calendario", title: "Faro — Calendario" },
-  { prefix: "/alertas/estadistica", title: "Faro — Estadística" },
-  { prefix: "/alertas/directa", title: "Faro — Concesión directa" },
-  { prefix: "/alertas/contratos", title: "Faro — Contratos" },
-  { prefix: "/alertas/vinculos", title: "Faro — Vínculos" },
-  { prefix: "/alertas/sociedades", title: "Faro — Sociedades" },
-  { prefix: "/alertas/registro", title: "Faro — Registro" },
-  { prefix: "/alertas", title: "Faro — Alertas" },
-  { prefix: "/convocatorias", title: "Faro — Convocatorias" },
-  { prefix: "/concesiones", title: "Faro — Concesiones" },
-  { prefix: "/beneficiarios", title: "Faro — Beneficiarios" },
-];
-
-export const titleForPath = (pathname: string) => {
-  const match = TITLES.find((item) => {
-    if (item.exact) {
-      return pathname === item.prefix;
-    }
-    return pathname === item.prefix || pathname.startsWith(`${item.prefix}/`);
-  });
-  if (!match) {
-    return "Faro";
-  }
-  return match.title;
-};
-
-export const sectionForPath = (pathname: string) => {
-  const title = titleForPath(pathname);
-  const parts = title.split(" — ");
-  return parts[parts.length - 1] ?? "Faro";
-};
-
 export const isCurrent = (href: string, pathname: string) => {
   if (href === "/") {
     return pathname === "/";
