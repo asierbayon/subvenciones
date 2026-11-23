@@ -90,10 +90,10 @@ const EstadisticaPage = async ({ searchParams }: { searchParams: Promise<AlertSe
       ) : (
         <ol className="grid gap-3">
           {data.rows.map((row) => (
-            <li key={row.id} className="rounded-3xl border border-line bg-elev p-4">
+            <li key={row.id} className="xp-card">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="font-display text-2xl">
-                  <Link href={`/concesiones/${row.concesionId}`} className="underline decoration-line underline-offset-2 hover:decoration-accent">
+                <h2 className="xp-heading">
+                  <Link href={`/concesiones/${row.concesionId}`} className="xp-link font-normal">
                     {formatEuro(row.importe)}
                   </Link>
                 </h2>
@@ -101,7 +101,7 @@ const EstadisticaPage = async ({ searchParams }: { searchParams: Promise<AlertSe
               </div>
               <p className="mt-1 text-sm text-muted">
                 {row.beneficiarioId ? (
-                  <Link href={`/beneficiarios/${row.beneficiarioId}`} className="underline decoration-line underline-offset-2">
+                  <Link href={`/beneficiarios/${row.beneficiarioId}`} className="xp-link font-normal">
                     {row.nombre}
                   </Link>
                 ) : (
@@ -129,10 +129,10 @@ const EstadisticaPage = async ({ searchParams }: { searchParams: Promise<AlertSe
       data.organismos,
       data.total,
       data.pageSize,
-      <div className="overflow-x-auto rounded-3xl border border-line bg-elev">
-        <table className="w-full text-sm">
+      <div className="xp-table-frame">
+        <table className="xp-table">
           <caption className="sr-only">Cuota de importes múltiplos de mil euros</caption>
-          <thead className="bg-sidebar text-left text-xs tracking-wide text-muted uppercase">
+          <thead>
             <tr>
               <th scope="col" className="px-3 py-2">Organismo</th>
               <th scope="col" className="px-3 py-2">Territorio</th>
@@ -145,7 +145,7 @@ const EstadisticaPage = async ({ searchParams }: { searchParams: Promise<AlertSe
             {data.rows.map((row) => (
               <tr key={row.id} className="border-t border-line">
                 <th scope="row" className="px-3 py-2 text-left font-semibold">
-                  <Link href={`/concesiones?organismo=${encodeURIComponent(row.organismo)}`} className="underline decoration-line underline-offset-2 hover:decoration-accent">
+                  <Link href={`/concesiones?organismo=${encodeURIComponent(row.organismo)}`} className="xp-link font-normal">
                     {row.organismo}
                   </Link>
                 </th>
@@ -168,10 +168,10 @@ const EstadisticaPage = async ({ searchParams }: { searchParams: Promise<AlertSe
     data.organismos,
     data.total,
     data.pageSize,
-    <div className="overflow-x-auto rounded-3xl border border-line bg-elev">
-      <table className="w-full text-sm">
+    <div className="xp-table-frame">
+      <table className="xp-table">
         <caption className="sr-only">Desviación de Benford por organismo</caption>
-        <thead className="bg-sidebar text-left text-xs tracking-wide text-muted uppercase">
+        <thead>
           <tr>
             <th scope="col" className="px-3 py-2">Organismo</th>
             <th scope="col" className="px-3 py-2">Territorio</th>
@@ -183,7 +183,7 @@ const EstadisticaPage = async ({ searchParams }: { searchParams: Promise<AlertSe
           {data.rows.map((row) => (
             <tr key={row.id} className="border-t border-line">
               <th scope="row" className="px-3 py-2 text-left font-semibold">
-                <Link href={`/concesiones?organismo=${encodeURIComponent(row.organismo)}`} className="underline decoration-line underline-offset-2 hover:decoration-accent">
+                <Link href={`/concesiones?organismo=${encodeURIComponent(row.organismo)}`} className="xp-link font-normal">
                   {row.organismo}
                 </Link>
               </th>

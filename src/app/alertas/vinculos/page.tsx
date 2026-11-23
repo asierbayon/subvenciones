@@ -27,7 +27,7 @@ const CompanyName = ({ alert }: { alert: VinculoAlert }) => {
   return (
     <Link
       href={`/beneficiarios/${alert.beneficiarioId}`}
-      className="underline decoration-line underline-offset-2 hover:decoration-accent"
+      className="xp-link font-normal"
     >
       {alert.empresa}
     </Link>
@@ -62,7 +62,7 @@ const CompanyTenure = ({ alert }: { alert: VinculoAlert }) => {
 const GrantLink = ({ id, children }: { id: number; children: string }) => (
   <Link
     href={`/concesiones/${id}`}
-    className="font-semibold underline decoration-line underline-offset-2 hover:decoration-accent"
+    className="xp-link"
   >
     {children}
   </Link>
@@ -125,9 +125,9 @@ const VinculosPage = async ({ searchParams }: { searchParams: Promise<AlertSearc
       ) : (
         <ol className="grid gap-4">
           {loaded.alerts.map((alert) => (
-            <li key={alert.id} className="rounded-3xl border border-line bg-elev p-4">
+            <li key={alert.id} className="xp-card">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="font-display text-2xl">
+                <h2 className="xp-heading">
                   <CompanyName alert={alert} />
                 </h2>
                 <p className="text-sm font-semibold tabular-nums">{formatEuro(alert.importeSuma)}</p>
@@ -154,13 +154,13 @@ const VinculosPage = async ({ searchParams }: { searchParams: Promise<AlertSearc
                   href={alert.fuenteUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="font-semibold underline decoration-line underline-offset-2 hover:decoration-accent"
+                  className="xp-link"
                 >
                   Fuente publicada
                 </a>
                 <span className="text-muted"> · {alert.fuente}</span>
               </p>
-              <ul className="mt-3 divide-y divide-line rounded-2xl border border-line">
+              <ul className="mt-3 xp-inset-list">
                 {alert.items.map((item) => (
                   <li
                     key={item.concesionId}

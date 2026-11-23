@@ -72,13 +72,13 @@ const SociedadesPage = async ({ searchParams }: { searchParams: Promise<AlertSea
       ) : (
         <ol className="grid gap-4">
           {loaded.alerts.map((alert) => (
-            <li key={alert.id} className="rounded-3xl border border-line bg-elev p-4">
+            <li key={alert.id} className="xp-card">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="font-display text-2xl">
+                <h2 className="xp-heading">
                   {alert.beneficiarioId ? (
                     <Link
                       href={`/beneficiarios/${alert.beneficiarioId}`}
-                      className="underline decoration-line underline-offset-2 hover:decoration-accent"
+                      className="xp-link font-normal"
                     >
                       {alert.nombre}
                     </Link>
@@ -104,12 +104,12 @@ const SociedadesPage = async ({ searchParams }: { searchParams: Promise<AlertSea
                   <ExternalLink href={alert.fuenteUrl}>{alert.fuenteCve || "Anuncio en el BORME"}</ExternalLink>
                 ) : null}
               </p>
-              <ul className="mt-3 divide-y divide-line rounded-2xl border border-line">
+              <ul className="mt-3 xp-inset-list">
                 {alert.items.map((item) => (
                   <li key={item.concesionId} className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:items-baseline sm:justify-between">
                     <Link
                       href={`/concesiones/${item.concesionId}`}
-                      className="font-semibold underline decoration-line underline-offset-2 hover:decoration-accent"
+                      className="xp-link"
                     >
                       {formatEuro(item.importe)} el {formatDate(item.fecha)}
                     </Link>

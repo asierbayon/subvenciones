@@ -47,13 +47,13 @@ const AlertMarks = ({ alert }: { alert: Pick<ContratoAlert, "nivel" | "menor" | 
 );
 
 export const ContratoAlertCard = ({ alert }: { alert: ContratoAlert }) => (
-  <article className="rounded-3xl border border-line bg-elev p-4">
+  <article className="xp-card">
     <div className="flex flex-wrap items-baseline justify-between gap-2">
-      <h3 className="font-display text-2xl">
+      <h3 className="xp-heading">
         {alert.beneficiarioId ? (
           <Link
             href={`/beneficiarios/${alert.beneficiarioId}`}
-            className="underline decoration-line underline-offset-2 hover:decoration-accent"
+            className="xp-link font-normal"
           >
             {alert.nombre}
           </Link>
@@ -82,12 +82,12 @@ export const ContratoAlertCard = ({ alert }: { alert: ContratoAlert }) => (
         {alert.dir3 ? ` · DIR3 ${alert.dir3}` : ""}
       </span>
     </p>
-    <ul className="mt-3 divide-y divide-line rounded-2xl border border-line">
+    <ul className="mt-3 xp-inset-list">
       {alert.items.map((item) => (
         <li key={item.concesionId} className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:items-baseline sm:justify-between">
           <Link
             href={`/concesiones/${item.concesionId}`}
-            className="font-semibold underline decoration-line underline-offset-2 hover:decoration-accent"
+            className="xp-link"
           >
             {formatEuro(item.importe)} el {formatDate(item.fecha)}
           </Link>
@@ -99,7 +99,7 @@ export const ContratoAlertCard = ({ alert }: { alert: ContratoAlert }) => (
 );
 
 const ContractLine = ({ row }: { row: ContratoRow }) => (
-  <li className="rounded-2xl border border-line px-3 py-3 text-sm">
+  <li className="xp-card text-sm">
     <div className="flex flex-wrap items-baseline justify-between gap-2">
       <p className="font-semibold">{row.titulo}</p>
       <p className="tabular-nums">{formatEuro(row.importe)}</p>
@@ -116,12 +116,12 @@ const ContractLine = ({ row }: { row: ContratoRow }) => (
       <div className="mt-2">
         <AlertMarks alert={row.alerta} />
         <p className="mt-2 leading-relaxed">{row.alerta.motivo}</p>
-        <ul className="mt-2 divide-y divide-line rounded-2xl border border-line">
+        <ul className="mt-2 xp-inset-list">
           {row.alerta.items.map((item) => (
             <li key={item.concesionId} className="px-3 py-2">
               <Link
                 href={`/concesiones/${item.concesionId}`}
-                className="font-semibold underline decoration-line underline-offset-2 hover:decoration-accent"
+                className="xp-link"
               >
                 Concesión de {formatEuro(item.importe)} el {formatDate(item.fecha)}
               </Link>
@@ -134,8 +134,8 @@ const ContractLine = ({ row }: { row: ContratoRow }) => (
 );
 
 const Missing = () => (
-  <section className="mt-8 rounded-3xl border border-dashed border-line bg-elev p-4">
-    <h2 className="font-display text-2xl">Contratos públicos</h2>
+  <section className="mt-8 xp-empty">
+    <h2 className="xp-heading">Contratos públicos</h2>
     <p className="mt-2 text-sm leading-relaxed text-muted">
       El cruce con la Plataforma de Contratación del Sector Público no está calculado. Es un paso opcional:{" "}
       <code>python3 pipeline/contratos.py</code>.
@@ -157,7 +157,7 @@ export const ContratosPublicos = async ({ nif, organismo, exact = false }: Contr
     }
     return (
       <section className="mt-8">
-        <h2 className="font-display text-3xl">Contratos públicos</h2>
+        <h2 className="xp-heading xp-heading-lg">Contratos públicos</h2>
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
           Indicador, no prueba. Contratos de este NIF adjudicados por el mismo organismo, o por la misma administración
           cuando el contrato es menor o no salió a convocatoria abierta, a menos de 180 días de una concesión.
@@ -194,7 +194,7 @@ export const ContratosPublicos = async ({ nif, organismo, exact = false }: Contr
     }
     return (
       <section className="mt-8">
-        <h2 className="font-display text-3xl">Contratos públicos</h2>
+        <h2 className="xp-heading xp-heading-lg">Contratos públicos</h2>
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
           Adjudicaciones de la PLACSP entre 2018 y 2022 a este NIF. Si una fila lleva la marca «Indicador», el contrato
           queda cerca en el tiempo de una concesión del mismo organismo o, si es menor o sin convocatoria abierta, de la
@@ -229,7 +229,7 @@ export const ContratosPublicos = async ({ nif, organismo, exact = false }: Contr
   }
   return (
     <section className="mt-8">
-      <h2 className="font-display text-3xl">Contratos públicos</h2>
+      <h2 className="xp-heading xp-heading-lg">Contratos públicos</h2>
       <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
         Indicador, no prueba. Beneficiarios de este organismo que también se adjudican un contrato suyo, o de la misma
         administración si el contrato es menor o no salió a convocatoria abierta, en una ventana de 180 días.

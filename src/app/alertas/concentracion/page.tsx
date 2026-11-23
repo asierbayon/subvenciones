@@ -73,10 +73,10 @@ const ConcentracionPage = async ({ searchParams }: { searchParams: Promise<Alert
       {loaded.concentracion.rows.length === 0 ? (
         <EmptyState>Ningún organismo con estos filtros.</EmptyState>
       ) : (
-        <div className="overflow-x-auto rounded-3xl border border-line bg-elev">
-          <table className="w-full text-sm">
+        <div className="xp-table-frame">
+          <table className="xp-table">
             <caption className="sr-only">Concentración del importe por organismo</caption>
-            <thead className="bg-sidebar text-left text-xs tracking-wide text-muted uppercase">
+            <thead>
               <tr>
                 <th scope="col" className="px-3 py-2">Organismo</th>
                 <th scope="col" className="px-3 py-2">Territorio</th>
@@ -93,7 +93,7 @@ const ConcentracionPage = async ({ searchParams }: { searchParams: Promise<Alert
                   <th scope="row" className="px-3 py-2 text-left font-semibold">
                     <Link
                       href={`/concesiones?organismo=${encodeURIComponent(row.organismo)}`}
-                      className="underline decoration-line underline-offset-2 hover:decoration-accent"
+                      className="xp-link font-normal"
                     >
                       {row.organismo}
                     </Link>
@@ -113,7 +113,7 @@ const ConcentracionPage = async ({ searchParams }: { searchParams: Promise<Alert
       )}
       <AlertPager path="/alertas/concentracion" filters={filters} total={loaded.concentracion.total} pageSize={loaded.concentracion.pageSize} />
 
-      <h2 className="mt-12 font-display text-3xl">Ganadores que repiten</h2>
+      <h2 className="mt-12 xp-heading xp-heading-lg">Ganadores que repiten</h2>
       <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
         Se listan solo entidades privadas que no son universidades, con al menos cuatro años y un millón de euros
         acumulados. Las transferencias anuales a otra administración o a una universidad quedan fuera: son el
@@ -124,11 +124,11 @@ const ConcentracionPage = async ({ searchParams }: { searchParams: Promise<Alert
       ) : (
         <ol className="mt-4 grid gap-3">
           {loaded.recurrentes.rows.map((row) => (
-            <li key={row.id} className="rounded-3xl border border-line bg-elev p-4">
+            <li key={row.id} className="xp-card">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h3 className="font-display text-xl">
+                <h3 className="xp-heading">
                   {row.beneficiarioId ? (
-                    <Link href={`/beneficiarios/${row.beneficiarioId}`} className="underline decoration-line underline-offset-2 hover:decoration-accent">
+                    <Link href={`/beneficiarios/${row.beneficiarioId}`} className="xp-link font-normal">
                       {row.nombre}
                     </Link>
                   ) : (

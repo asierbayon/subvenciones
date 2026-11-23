@@ -82,9 +82,9 @@ const CalendarioPage = async ({ searchParams }: { searchParams: Promise<AlertSea
       ) : (
         <ol className="grid gap-3">
           {loaded.rows.map((row) => (
-            <li key={row.id} className="rounded-3xl border border-line bg-elev p-4">
+            <li key={row.id} className="xp-card">
               <p className="text-xs font-semibold tracking-wide text-terra uppercase">{tipoLabel(row.tipo)}</p>
-              <h2 className="mt-1 font-display text-2xl">{row.etiqueta}</h2>
+              <h2 className="mt-1 xp-heading">{row.etiqueta}</h2>
               <p className="mt-1 text-sm text-muted">
                 {row.organismo} · {row.ccaa} · {formatDate(row.fechaInicio)} – {formatDate(row.fechaFin)}
               </p>
@@ -92,7 +92,7 @@ const CalendarioPage = async ({ searchParams }: { searchParams: Promise<AlertSea
               <p className="mt-2 text-sm">
                 <Link
                   href={concesionesHref(row.organismo, row.fechaInicio, row.tipo === "reemplazo" ? "" : row.fechaFin)}
-                  className="font-semibold text-accent underline decoration-accent/40 underline-offset-2"
+                  className="xp-link"
                 >
                   Ver las {formatNumber(row.n)} concesiones de este organismo
                   {row.importe > 0 ? ` (${formatEuro(row.importe)})` : ""}

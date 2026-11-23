@@ -70,9 +70,9 @@ const VinculosPage = async ({ searchParams }: { searchParams: Promise<AlertSearc
       ) : (
         <ol className="grid gap-4">
           {loaded.alerts.map((alert) => (
-            <li key={alert.id} className="rounded-3xl border border-line bg-elev p-4">
+            <li key={alert.id} className="xp-card">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="font-display text-2xl">{alert.etiqueta}</h2>
+                <h2 className="xp-heading">{alert.etiqueta}</h2>
                 <p className="text-sm font-semibold tabular-nums">{formatEuro(alert.importe)}</p>
               </div>
               <p className="mt-1 text-sm text-muted">
@@ -84,12 +84,12 @@ const VinculosPage = async ({ searchParams }: { searchParams: Promise<AlertSearc
               <p className="mt-3 text-sm leading-relaxed">{alert.motivo}</p>
               <ul className="mt-3 grid gap-3">
                 {alert.miembros.map((miembro) => (
-                  <li key={`${alert.id}-${miembro.beneficiarioId}`} className="rounded-2xl border border-line px-3 py-2">
+                  <li key={`${alert.id}-${miembro.beneficiarioId}`} className="xp-card">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       {miembro.beneficiarioId ? (
                         <Link
                           href={`/beneficiarios/${miembro.beneficiarioId}`}
-                          className="font-semibold underline decoration-line underline-offset-2 hover:decoration-accent"
+                          className="xp-link"
                         >
                           {miembro.nombre}
                         </Link>
@@ -113,7 +113,7 @@ const VinculosPage = async ({ searchParams }: { searchParams: Promise<AlertSearc
                           <li key={item.concesionId}>
                             <Link
                               href={`/concesiones/${item.concesionId}`}
-                              className="text-sm underline decoration-line underline-offset-2 hover:decoration-accent"
+                              className="xp-link font-normal"
                             >
                               {formatEuro(item.importe)} el {formatDate(item.fecha)}
                             </Link>

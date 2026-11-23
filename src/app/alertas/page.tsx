@@ -215,8 +215,8 @@ const AlertasPage = async () => {
       <ul className="grid gap-3 md:grid-cols-2">
         {signals.map((signal) => (
           <li key={signal.href}>
-            <Link href={signal.href} className="block rounded-3xl border border-line bg-elev p-5 hover:bg-highlight">
-              <h2 className="font-display text-2xl">{signal.title}</h2>
+            <Link href={signal.href} className="xp-card block">
+              <h2 className="xp-heading">{signal.title}</h2>
               <p className="mt-2 text-sm leading-relaxed text-muted">{signal.text}</p>
               <p className="mt-3 text-sm font-semibold text-accent">{signalCount(signal.table, counts)}</p>
             </Link>

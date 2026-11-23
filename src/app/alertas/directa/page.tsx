@@ -59,10 +59,10 @@ const DirectaPage = async ({ searchParams }: { searchParams: Promise<AlertSearch
       {loaded.rows.length === 0 ? (
         <EmptyState>Ningún organismo con estos filtros.</EmptyState>
       ) : (
-        <div className="overflow-x-auto rounded-3xl border border-line bg-elev">
-          <table className="w-full text-sm">
+        <div className="xp-table-frame">
+          <table className="xp-table">
             <caption className="sr-only">Organismos ordenados por la cuota de títulos que mencionan concesión directa o nominativa</caption>
-            <thead className="bg-sidebar text-left text-xs tracking-wide text-muted uppercase">
+            <thead>
               <tr>
                 <th scope="col" className="px-3 py-2">Organismo</th>
                 <th scope="col" className="px-3 py-2">Territorio</th>
@@ -76,7 +76,7 @@ const DirectaPage = async ({ searchParams }: { searchParams: Promise<AlertSearch
               {loaded.rows.map((row) => (
                 <tr key={row.id} className="border-t border-line">
                   <th scope="row" className="px-3 py-2 text-left font-semibold">
-                    <Link href={`/concesiones?organismo=${encodeURIComponent(row.organismo)}`} className="underline decoration-line underline-offset-2 hover:decoration-accent">
+                    <Link href={`/concesiones?organismo=${encodeURIComponent(row.organismo)}`} className="xp-link font-normal">
                       {row.organismo}
                     </Link>
                   </th>
