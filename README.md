@@ -127,6 +127,36 @@ python3 pipeline/alerts.py directa
 
 No hay columna de procedimiento ni de reintegro, así que no se fabrica una «concesión directa» oficial. El sustituto cuenta títulos que dicen «concesión directa», «concessió directa» o «nominativ» y ordena los organismos por esa cuota. Es una pista de texto, no el campo que la BDNS usa por dentro.
 
+```bash
+python3 pipeline/politicos.py
+python3 pipeline/vinculos.py
+```
+
+Vínculos políticos cruza dos cosas: un cargo público y el administrador de la sociedad que cobra. El cargo sale de listas abiertas. El administrador tiene que estar en la tabla `borme_admins(nif, nombre, cargo, desde, hasta)`, que construye otro proceso (el BORME) y que este comando no rellena. Sin esa tabla el comando termina sin escribir indicadores. `pipeline/fixtures/borme_admins.csv` es un ejemplo mínimo para probar el cruce antes de que existan los administradores reales:
+
+```bash
+python3 pipeline/vinculos.py --fixture
+python3 pipeline/vinculos.py --self-check
+```
+
+Solo se publica una coincidencia si la confianza llega a 0,85. Hace falta el nombre y los dos apellidos (o un solo apellido largo y poco común), que el nombre no esté en tres o más órganos, que la subvención caiga dentro del mandato y del cargo societario, y que el órgano que concede sea el del cargo: el municipio del concejal o del alcalde, el cabildo del consejero insular, el parlamento del diputado autonómico, o el departamento del alto cargo. Un apoderado baja la nota. Si el nombramiento societario no trae fechas, también. Por debajo del umbral no se guarda la fila.
+
+En la ingesta de noviembre de 2026 la tabla `politico` quedó en unas 152.000 filas, unos 63 MB:
+
+| Fuente | Qué entra | Cobertura en ese cruce |
+| --- | --- | --- |
+| Ministerio del Interior, ficheros de candidatos electos (municipales 24 may 2015 y 26 may 2019) | Concejales. El fichero 04 son los municipios de lista cerrada; el 12, los de lista abierta (menos de 250 habitantes). | 67.185 electos en 2015 (8.091 municipios) y 66.679 en 2019 (8.120). No se guardan DNI ni fecha de nacimiento. |
+| El mismo ministerio, cabildos insulares de esas dos fechas | Miembros electos del cabildo. | 150 en 2015 y 156 en 2019, siete islas. |
+| Ministerio de Política Territorial, registro de alcaldes (xlsx de los mandatos 2015-2019 y 2019-2023) | Titular de la alcaldía, con posesión y baja. | 8.822 y 8.682 filas. Casi todas casan con un concejal electo del mismo municipio (8.657 y 8.494). |
+
+Las fechas de un concejal son las del mandato (13 jun 2015 – 14 jun 2019, y 15 jun 2019 – 16 jun 2023), no el día en que esa persona tomó posesión o cesó. Quien entra a mitad de mandato por una renuncia no está, y quien dimite sigue figurando hasta el final del mandato. En los alcaldes sí constan posesión y baja.
+
+El Interior no publica el fichero de candidatos de las elecciones autonómicas: se lo pidieron y respondió que es competencia de cada comunidad. Los CSV autonómicos que hay en datos.gob.es para este periodo son recuentos de escaños o de votos, no listas nominales reutilizables. El módulo acepta un diputado autonómico si otra carga lo inserta en `politico` con `rol = diputado`, y solo lo cruza con ayudas del propio parlamento, no con todas las de la comunidad. Los altos cargos se cruzan solo si el nombre del departamento aparece en el órgano que concede. Esta ingesta no trae una nómina estatal de altos cargos: el BOE publica los nombramientos como texto diario, no como padrón.
+
+El Tribunal de Cuentas fiscaliza la contabilidad de los partidos en PDF. No hay un fichero reutilizable de donantes identificables para 2018-2022, y una donación no dice que el administrador sea cargo del órgano que concede. No se usa.
+
+El indicador es solo eso. Un homónimo con los mismos apellidos puede no ser el cargo. No dice que votara la ayuda, que estuviera en la junta de gobierno ni que el expediente incumpla la Ley General de Subvenciones. La ficha enlaza la fuente oficial. El área de descargas del Interior a veces exige un reto anti-bots; si el zip falla, el script baja los mismos `.DAT` desde la copia íntegra de [JaimeObregon/infoelectoral](https://github.com/JaimeObregon/infoelectoral). La cita de cada persona sigue siendo la página del ministerio.
+
 ## Arranque
 
 Hace falta Node.js 22 y Python 3.10 o superior. El pipeline solo usa la biblioteca estándar.
