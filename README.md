@@ -168,7 +168,7 @@ Reglas, todas sobre subvenciones dinerarias:
 
 - **nueva_capital.** Constitución como mucho 365 días antes de una ayuda de al menos 10.000 €, y capital publicado de hasta 3.100 € (el mínimo legal de 3.000 y los redondeos que salen en el boletín).
 - **nueva_disuelta.** Constitución en esos 365 días, una ayuda de al menos 10.000 €, y disolución, extinción o cierre provisional en los 730 días posteriores a esa ayuda.
-- **importe_capital.** Capital de hasta 3.100 € y una ayuda de al menos 10.000 € y de al menos diez veces ese capital.
+- **importe_capital.** Capital de hasta 3.100 € y una ayuda de al menos 10.000 € y de al menos diez veces ese capital. Si la convocatoria es de IDAE o de incentivos regionales, el peso baja a 0,25 y no sale en la lista por defecto: es el vehículo de un proyecto. Recupera el peso si además hay cierre, o un administrador compartido. `?vehiculos=1` las muestra. Lo mismo vale para **nueva_capital** en esas convocatorias.
 - **disuelta_pronto.** Disolución o extinción en los 540 días posteriores a una ayuda de al menos 10.000 €.
 - **administrador / socio / domicilio.** Dos o más NIF distintos cobran del mismo organismo y publican la misma persona o el mismo domicilio.
 

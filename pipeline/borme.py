@@ -580,6 +580,18 @@ def cierre_estructural(cierre: str) -> bool:
     return cierre in ("fusion", "escision")
 
 
+def proyecto_spv(titulo: str, organismo: str) -> bool:
+    """Project companies in IDAE and regional-incentive calls are expected to have token capital."""
+    blob = fold(f"{titulo} {organismo}")
+    if "INCENTIVOS REGIONALES" in blob or "INCENTIVO REGIONAL" in blob:
+        return True
+    if re.search(r"\bIDAE\b", blob):
+        return True
+    if "DIVERSIFICACION Y AHORRO DE LA ENERGIA" in blob:
+        return True
+    return False
+
+
 def parse_document(payload: bytes, default_fecha: str = "") -> list[Acto]:
     root = ET.fromstring(payload)
     meta = root.find("metadatos")
@@ -752,6 +764,10 @@ def self_check() -> None:
     assert cierre_estructural("fusion")
     assert cierre_estructural("escision")
     assert not cierre_estructural("voluntaria")
+    assert proyecto_spv("Línea IDAE de autoconsumo", "IDAE")
+    assert proyecto_spv("Proyecto industrial", "Incentivos regionales de Andalucía")
+    assert proyecto_spv("Planta", "Instituto para la Diversificación y Ahorro de la Energía")
+    assert not proyecto_spv("Ayuda al comercio", "Ayuntamiento de Abla")
     assert by_name["FINCA MARCHANTE"].capital == 2439100
     assert by_name["FINCA MARCHANTE"].constitucion == 0
     reduced = reduce_acts(
@@ -1470,7 +1486,8 @@ def ensure_match_schema(connection: sqlite3.Connection) -> None:
           ratio REAL,
           dias INTEGER,
           fuente_cve TEXT,
-          fuente_url TEXT
+          fuente_url TEXT,
+          peso REAL NOT NULL DEFAULT 1
         );
         CREATE TABLE alert_borme_sociedad_item (
           alert_id INTEGER NOT NULL,
@@ -1820,7 +1837,16 @@ def build_sociedad_alerts(connection: sqlite3.Connection) -> None:
     current_key = None
     grants: list[tuple] = []
 
-    def emit(regla: str, motivo: str, chosen: list[tuple], capital: float | None, ratio: float | None, dias: int | None, cve: str) -> None:
+    def emit(
+        regla: str,
+        motivo: str,
+        chosen: list[tuple],
+        capital: float | None,
+        ratio: float | None,
+        dias: int | None,
+        cve: str,
+        peso: float = 1.0,
+    ) -> None:
         nonlocal next_id
         if not chosen:
             return
@@ -1851,6 +1877,7 @@ def build_sociedad_alerts(connection: sqlite3.Connection) -> None:
                 dias,
                 cve,
                 borme_url(cve),
+                peso,
             )
         )
         for grant in chosen[:15]:
@@ -1906,12 +1933,28 @@ def build_sociedad_alerts(connection: sqlite3.Connection) -> None:
                     ratio_best = (ratio_value, picked[0], picked[1], picked[2] or "", grant)
             if fecha_dis and span_dis is not None and 0 <= span_dis <= DISSOLVE_SOON_DAYS and grant[5] >= MIN_GRANT:
                 cierre.append(grant)
+        stacked = (bool(corta) and not cierre_estructural(causa_codigo or "")) or (
+            bool(cierre) and not cierre_estructural(causa_codigo or "")
+        )
+
+        def nota_spv(chosen: list[tuple]) -> tuple[float, str]:
+            if stacked or not chosen:
+                return 1.0, ""
+            if all(proyecto_spv(item[9] or "", item[1] or "") for item in chosen):
+                return (
+                    0.25,
+                    " La convocatoria es de IDAE o de incentivos regionales: una sociedad de proyecto con capital mínimo "
+                    "es el vehículo habitual, y esta señal pesa menos salvo que se acumule otra.",
+                )
+            return 1.0, ""
+
         if nueva and max(grant[5] for grant in nueva) >= MIN_GRANT:
             cited = max(nueva, key=lambda grant: grant[5])
             span_new = day_span(fecha_const, cited[4]) or 0
             extra = ""
             if len(nueva) > 1:
                 extra = f" En ese primer año hay {len(nueva)} subvenciones de este organismo."
+            peso, nota = nota_spv(nueva)
             emit(
                 "nueva_capital",
                 (
@@ -1919,13 +1962,14 @@ def build_sociedad_alerts(connection: sqlite3.Connection) -> None:
                     f"({fuente_const or 'sin identificador'}), {span_new} días antes de la subvención del "
                     f"{fecha_es(cited[4])}. El capital publicado es {euro(nueva_capital or 0)}. "
                     "Una sociedad recién creada con capital mínimo puede ser un vehículo y también una empresa pequeña legítima. "
-                    f"Es un indicador, no una prueba.{extra}"
+                    f"Es un indicador, no una prueba.{extra}{nota}"
                 ),
                 nueva,
                 nueva_capital,
                 None,
                 span_new,
                 nueva_cve,
+                peso,
             )
         if corta and not cierre_estructural(causa_codigo or "") and max(grant[5] for grant in corta) >= MIN_GRANT:
             cited = max(corta, key=lambda grant: grant[5])
@@ -1947,18 +1991,20 @@ def build_sociedad_alerts(connection: sqlite3.Connection) -> None:
             )
         if ratio_best is not None:
             ratio_value, capital_value, capital_day, capital_cve, grant = ratio_best
+            peso, nota = nota_spv(ratio_rows)
             emit(
                 "importe_capital",
                 (
                     f"{caveat}La subvención de {euro(grant[5])} equivale a {ratio_value:.0f} veces el capital social de "
                     f"{euro(capital_value)} publicado en el BORME ({capital_cve or 'sin identificador'}, a {fecha_es(capital_day)}). "
-                    "El capital social no mide el patrimonio ni la facturación. Es un indicador, no una prueba."
+                    f"El capital social no mide el patrimonio ni la facturación. Es un indicador, no una prueba.{nota}"
                 ),
                 ratio_rows,
                 capital_value,
                 ratio_value,
                 day_span(fecha_const, grant[4]),
                 capital_cve,
+                peso,
             )
         if cierre and not cierre_estructural(causa_codigo or ""):
             closest = min(cierre, key=lambda grant: day_span(grant[4], fecha_dis) or 0)
@@ -1992,8 +2038,8 @@ def build_sociedad_alerts(connection: sqlite3.Connection) -> None:
         """
         INSERT INTO alert_borme_sociedad (
           id, regla, motivo, confianza, nif, beneficiario_id, nombre, organismo, organismo_norm, ccaa, anio,
-          fecha_constitucion, capital, fecha_disolucion, importe, ratio, dias, fuente_cve, fuente_url
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          fecha_constitucion, capital, fecha_disolucion, importe, ratio, dias, fuente_cve, fuente_url, peso
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         alerts,
     )
@@ -2013,6 +2059,7 @@ def build_sociedad_alerts(connection: sqlite3.Connection) -> None:
         """
     )
     log(f"Sociedades señaladas: {len(alerts)}")
+    restore_stacked_peso(connection)
 
 
 def build_vinculo_alerts(connection: sqlite3.Connection) -> None:
@@ -2247,6 +2294,22 @@ def build_vinculo_alerts(connection: sqlite3.Connection) -> None:
         """
     )
     log(f"Vínculos: {len(alerts)}")
+    restore_stacked_peso(connection)
+
+
+def restore_stacked_peso(connection: sqlite3.Connection) -> None:
+    """A shared administrator is another signal, so the IDAE down-weight comes back."""
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(alert_borme_sociedad)")}
+    if "peso" not in columns or not table_exists(connection, "alert_borme_vinculo_miembro"):
+        return
+    connection.execute(
+        """
+        UPDATE alert_borme_sociedad
+        SET peso = 1
+        WHERE peso < 1
+          AND nif IN (SELECT nif FROM alert_borme_vinculo_miembro WHERE nif != '')
+        """
+    )
 
 
 def _columns(connection: sqlite3.Connection, table: str) -> set[str]:
@@ -2313,7 +2376,8 @@ def ensure_sociedad_alert_tables(connection: sqlite3.Connection) -> None:
           ratio REAL,
           dias INTEGER,
           fuente_cve TEXT,
-          fuente_url TEXT
+          fuente_url TEXT,
+          peso REAL NOT NULL DEFAULT 1
         );
         CREATE TABLE alert_borme_sociedad_item (
           alert_id INTEGER NOT NULL,
