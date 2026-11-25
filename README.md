@@ -291,6 +291,35 @@ El Tribunal de Cuentas fiscaliza la contabilidad de los partidos en PDF. No hay 
 
 El indicador es solo eso. Un homónimo con los mismos apellidos puede no ser el cargo. No dice que votara la ayuda, que estuviera en la junta de gobierno ni que el expediente incumpla la Ley General de Subvenciones. La ficha enlaza la fuente oficial. El área de descargas del Interior a veces exige un reto anti-bots; si el zip falla, el script baja los mismos `.DAT` desde la copia íntegra de [JaimeObregon/infoelectoral](https://github.com/JaimeObregon/infoelectoral). La cita de cada persona sigue siendo la página del ministerio.
 
+```bash
+python3 pipeline/puertas_giratorias.py
+```
+
+Puertas giratorias es otro indicador, en `pipeline/puertas_giratorias.py`, y no toca las tablas de vínculos. Lee el índice, `data/politicos.sqlite` y el extracto `data/borme/borme.sqlite` que todavía tenga la tabla `acto` (la fecha de cada anuncio). Si ese extracto se compactó y se borró `acto`, no hay fecha de nombramiento y el comando se detiene: no vuelve a bajar el BORME ni reconstruye la base. `pnpm puertas` es el mismo comando.
+
+El patrón es otro que el de vínculos. Allí el cargo y el puesto en la sociedad se solapan. Aquí la persona deja el órgano y, como muy tarde cuatro años después, el BORME la publica como administrador o consejero de una sociedad que ya cobró de ese órgano. Un subtipo aparte, `durante`, guarda el nombramiento que cae todavía en el mandato: es el solape, no la puerta de después, y pide una puntuación más alta.
+
+Los ceses son supuestos, y la ficha lo dice:
+
+- Un cargo de 2015 que no está en el fichero de 2019 se da por terminado el 14 jun 2019. La fecha de concejal es la del mandato, no la dimisión. Una baja de alcalde anterior solo se usa si no queda una concejalía en ese municipio con fecha posterior.
+- No hay electos de 2023. Todo cargo del mandato 2019-2023 se trata como cesado el 16 jun 2023, aunque esa persona repitiera escaño.
+
+La fecha societaria es la primera publicación del extracto en la que ese nombre figura con un cargo de administración en esa hoja. El extracto no separa nombramientos de ceses, no guarda apoderados y usa el día del boletín, no el de la inscripción. Quien ya era administrador antes de tomar posesión no entra. Tampoco entran las sociedades cuyo nombre dice municipal, pública, sociedad mixta, patronato o ayuntamiento, ni los NIF que empiezan por P, Q o S. El cruce de la sociedad tiene que ser de confianza alta o media. El nombre que está en tres o más órganos, o en más de doce sociedades, se tira. El dinero son subvenciones dinerarias y, si se ha corrido el paso de contratos, adjudicaciones de la PLACSP, del mismo municipio, de una mancomunidad que lo nombra, de la isla o de la diputación, con fecha no posterior al anuncio. Lo cobrado dentro del mandato pesa más que lo cobrado solo en el hueco entre el cese y el nombramiento. Una sociedad pequeña pesa más que una grande.
+
+La pantalla está en `/alertas/puertas-giratorias`. Cada ficha es un indicio, no una prueba.
+
+En un servidor de 2 GB el comando no junta las tablas en memoria: recorre el BORME, se queda con la primera fecha de cada persona y sociedad, y agrega las ayudas en SQLite. Orientativamente, el pase completo de 2016-2023 son 20-50 minutos y 400-800 MB de residente. `--limit N` lee solo los primeros N actos con personas, en el orden del fichero, y marca la tabla como parcial.
+
+```bash
+python3 pipeline/boe_altos.py --from 2018-01-01 --to 2023-12-31
+```
+
+Los altos cargos del Estado salen de la sección II.A del BOE («Nombramientos, situaciones e incidencias»). El sumario de la [API de datos abiertos](https://www.boe.es/datosabiertos/api/api.php) ya trae el título del real decreto, así que no se baja cada disposición. Se guardan el XML del sumario en `data/boe/sumarios/` y las filas en `data/boe/altos.sqlite`; no se versionan. El domingo no se pide. Un festivo responde 404 y queda anotado para no repetirlo. Va una petición cada vez, con 0,2 s de pausa, y alarga la espera si el servidor contesta 429. `pnpm boe-altos` usa ese rango. Solo entran ministerios y Presidencia, no universidades ni tribunales.
+
+Cuando ese fichero existe, `puertas_giratorias.py` añade cada cese. Si en la caché hay un nombramiento anterior en el mismo ministerio, el mandato va de una fecha a la otra. Si solo está el cese, el mandato es ese día y la sociedad tiene que nombrarle después. El órgano que vale es el ministerio, también si el rótulo de la ayuda arrastra un renombre de esos años y los dos textos comparten la palabra propia (Hacienda, Cultura). `--sin-boe` lo deja fuera. `--boe ruta` señala otro fichero.
+
+No entran las autorizaciones de compatibilidad de la Oficina de Conflictos de Intereses ni las declaraciones de actividades del Congreso y del Senado. Quedan como fuente posible.
+
 ## Tamaño del índice
 
 La búsqueda no usa `snippet()` ni `bm25()`. Pide coincidencias de FTS5 y luego lee la fila. El índice sigue cubriendo lo que escribe la caja de búsqueda: título, organismo y código BDNS de la convocatoria, y nombre y NIF del beneficiario. FTS5 es de contenido externo (`content=` y `content_rowid='id'`): guarda el índice invertido y no una segunda copia del texto. El cargador inserta la forma plegada (sin tildes) que ya produce la caja. Un `rebuild` releería el texto visible y partiría distinto `nº12`, `100ª` o `CORUÆA`, así que no se usa.
@@ -323,9 +352,11 @@ python3 pipeline/contratos.py
 python3 pipeline/borme.py run
 python3 pipeline/politicos.py
 python3 pipeline/vinculos.py
+python3 pipeline/boe_altos.py --from 2018-01-01 --to 2023-12-31
+python3 pipeline/puertas_giratorias.py
 ```
 
-`pnpm alerts` solo lanza el fraccionamiento. `pnpm contratos`, `pnpm borme`, `pnpm politicos` y `pnpm vinculos` equivalen a los comandos de Python correspondientes. El orden es el de arriba: cada paso lee el índice que escribió el anterior.
+`pnpm alerts` solo lanza el fraccionamiento. `pnpm contratos`, `pnpm borme`, `pnpm politicos`, `pnpm vinculos`, `pnpm boe-altos` y `pnpm puertas` equivalen a los comandos de Python correspondientes. El orden es el de arriba: cada paso lee el índice que escribió el anterior. Puertas giratorias no hace falta para el resto, y el paso del BOE solo si se quieren altos cargos del Estado.
 
 ## Rehacer indicadores en un índice que ya existe
 
