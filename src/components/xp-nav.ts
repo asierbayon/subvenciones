@@ -21,6 +21,7 @@ export const ALERT_LINKS: XpLink[] = [
   { href: "/alertas/directa", label: "Concesión directa" },
   { href: "/alertas/contratos", label: "Contratos" },
   { href: "/alertas/vinculos", label: "Vínculos" },
+  { href: "/alertas/puertas-giratorias", label: "Puertas giratorias" },
   { href: "/alertas/sociedades", label: "Sociedades" },
   { href: "/alertas/registro", label: "Registro" },
 ];

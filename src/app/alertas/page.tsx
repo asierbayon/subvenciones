@@ -48,6 +48,12 @@ const signals = [
     table: "alert_vinculo",
   },
   {
+    href: "/alertas/puertas-giratorias",
+    title: "Puertas giratorias",
+    text: "Quien deja un cargo local y, después, el BORME le nombra administrador de una sociedad que cobró de ese órgano.",
+    table: "alert_puerta",
+  },
+  {
     href: "/alertas/sociedades",
     title: "Sociedades recientes",
     text: "Empresas constituidas poco antes de la ayuda, con capital mínimo, que se extinguen enseguida o cuya subvención es muy grande respecto del capital publicado en el BORME.",
@@ -72,6 +78,7 @@ const signalCount = (
     directa: number | null;
     contratos: number | null;
     vinculo: number | null;
+    puertas: number | null;
     sociedad: number | null;
     registro: number | null;
   },
@@ -122,6 +129,12 @@ const signalCount = (
     }
     return `${counts.vinculo.toLocaleString("es-ES")} indicadores`;
   }
+  if (table === "alert_puerta") {
+    if (counts.puertas === null) {
+      return "Sin calcular";
+    }
+    return `${counts.puertas.toLocaleString("es-ES")} indicadores`;
+  }
   if (table === "alert_borme_sociedad") {
     if (counts.sociedad === null) {
       return "Sin calcular";
@@ -168,6 +181,7 @@ const AlertasPage = async () => {
     const directa = await countTable("SELECT COUNT(*) AS n FROM alert_directa");
     const contratos = await countTable("SELECT COUNT(*) AS n FROM alert_contrato");
     const vinculo = await countTable("SELECT COUNT(*) AS n FROM alert_vinculo");
+    const puertas = await countTable("SELECT COUNT(*) AS n FROM alert_puerta");
     let sociedad: number | null = null;
     let registro: number | null = null;
     try {
@@ -192,6 +206,7 @@ const AlertasPage = async () => {
       directa,
       contratos,
       vinculo,
+      puertas,
       sociedad,
       registro,
     };
