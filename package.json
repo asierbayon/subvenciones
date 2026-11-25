@@ -13,6 +13,7 @@
     "politicos": "python3 pipeline/politicos.py",
     "vinculos": "python3 pipeline/vinculos.py",
     "puertas": "python3 pipeline/puertas_giratorias.py",
+    "boe-altos": "python3 pipeline/boe_altos.py",
     "lint": "eslint"
   },
   "dependencies": {
