@@ -15,6 +15,8 @@ Inputs, overridable with flags or ``BDNS_DB``, ``POLITICOS_DB`` and ``BORME_DB``
   dropped ``acto`` cannot be used: the aggregated people have no appointment date
 - ``data/bdns.sqlite`` — ``borme_empresa``, concessions, and ``placsp_contrato``
   when the contracts step has been run
+- ``data/boe/altos.sqlite`` — optional. Built by ``pipeline/boe_altos.py`` from
+  BOE section II.A. State high office is crossed only when that cache exists.
 
 Assumptions about the end of the mandate, stated on every row:
 
@@ -72,6 +74,7 @@ from nombres import (
     IndiceNombres,
     Persona,
     fold_name,
+    interpretations,
 )
 from territorio import LOCAL_PREFIXES, MunicipioIndex
 
@@ -671,6 +674,31 @@ def resolve_organo(text: str, ccaa: str, municipios: MunicipioIndex) -> str | No
     return None
 
 
+MINISTRY_GENERIC = frozenset(
+    {
+        "MINISTERIO",
+        "MINISTERIOS",
+        "FUNCION",
+        "PUBLICA",
+        "PUBLICO",
+        "POLITICA",
+        "GENERAL",
+        "ESTADO",
+        "ASUNTOS",
+        "SECRETARIA",
+        "GOBIERNO",
+        "PRESIDENCIA",
+        "RELACIONES",
+        "MEMORIA",
+        "DEMOCRATICA",
+    }
+)
+
+
+def ministry_tokens(value: str) -> set[str]:
+    return {token for token in fold_name(value).split() if len(token) >= 7 and token not in MINISTRY_GENERIC}
+
+
 def coherencia(
     salida: Salida,
     campos: list[str],
@@ -701,6 +729,9 @@ def coherencia(
                 return "parlamento"
     if salida.clave_organo and len(salida.clave_organo) >= 8 and salida.clave_organo in blob:
         return "ministerio"
+    if salida.ambito == "estatal" and "MINISTERIO" in blob:
+        if ministry_tokens(salida.clave_organo) & ministry_tokens(blob):
+            return "ministerio"
     if any(token in blob for token in ("DIPUTACION", "DIPUTACIO", "DEPUTACION")) and not explicit:
         province = fold_name(salida.provincia)
         padded = f" {blob} "
@@ -1606,7 +1637,46 @@ def open_bdns(path: Path) -> sqlite3.Connection:
     return connection
 
 
-def calcular(db_path: Path, politicos_path: Path, borme_path: Path, limit: int) -> list[Caso]:
+def cargos_desde_boe(path: Path) -> list[Cargo]:
+    from boe_altos import load_eventos, mandatos_de
+
+    cargos: list[Cargo] = []
+    for mandato in mandatos_de(load_eventos(path)):
+        guesses = interpretations(mandato.nombre)
+        if not guesses:
+            continue
+        persona = guesses[0]
+        cargos.append(
+            Cargo(
+                nombre=mandato.nombre,
+                persona=persona,
+                rol="alto_cargo",
+                ambito="estatal",
+                cuerpo=f"{mandato.departamento}: {mandato.cargo}",
+                municipio="",
+                ine="",
+                provincia="",
+                ccaa="Administración General del Estado",
+                desde=mandato.desde,
+                hasta=mandato.hasta,
+                partido="",
+                fuente="Agencia Estatal Boletín Oficial del Estado. Sección II.A, ceses y nombramientos.",
+                fuente_url=mandato.url or "https://www.boe.es",
+                clave_organo=fold_name(mandato.departamento),
+                precision_fechas="cese",
+            )
+        )
+    return cargos
+
+
+def calcular(
+    db_path: Path,
+    politicos_path: Path,
+    borme_path: Path,
+    limit: int,
+    boe_path: Path | None = None,
+    use_boe: bool = True,
+) -> list[Caso]:
     if not politicos_path.exists():
         raise SystemExit(f"No está {politicos_path}. Ejecuta antes python3 pipeline/politicos.py.")
     if not borme_path.exists():
@@ -1619,6 +1689,12 @@ def calcular(db_path: Path, politicos_path: Path, borme_path: Path, limit: int) 
             "La tabla alert_puerta quedará incompleta."
         )
     cargos = load_cargos(politicos_path)
+    if use_boe:
+        chosen_boe = boe_path if boe_path is not None else ROOT / "data" / "boe" / "altos.sqlite"
+        if chosen_boe.exists():
+            extra = cargos_desde_boe(chosen_boe)
+            log(f"Altos cargos con cese en el BOE: {len(extra)}")
+            cargos.extend(extra)
     log(f"Cargos leídos: {len(cargos)}")
     salidas = salidas_de(cargos)
     log(f"Ceses supuestos (un órgano por persona): {len(salidas)}")
@@ -1801,6 +1877,16 @@ def self_check() -> None:
         )
         == "ministerio"
     )
+    assert (
+        coherencia(
+            ministerio,
+            ["Ministerio de Hacienda y Función Pública"],
+            "Administración General del Estado",
+            municipios,
+        )
+        == "ministerio"
+    )
+    assert coherencia(ministerio, ["Ayuntamiento de Abertura"], "Extremadura", municipios) is None
 
     # The name bonus used by vinculos stays importable so a future change there
     # does not silently diverge from this threshold.
@@ -1867,7 +1953,127 @@ def self_check() -> None:
         assert stored == len(casos)
         assert items > 0
         assert parcial == "0"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        politicos = root / "politicos.sqlite"
+        borme = root / "borme.sqlite"
+        bdns = root / "bdns.sqlite"
+        boe = root / "altos.sqlite"
+        write_estatal_fixture(politicos, borme, bdns, boe)
+        casos = calcular(bdns, politicos, borme, 0, boe_path=boe)
+        assert len(casos) == 1
+        caso = casos[0]
+        assert caso.tipo == "despues"
+        assert caso.coherencia == "ministerio"
+        assert caso.rol == "alto_cargo"
+        assert caso.cese == "2020-01-13"
+        assert caso.nombramiento == "2020-06-01"
+        assert caso.nif == "B20202020"
+        assert "Hacienda" in caso.organismo
+        assert caso.supuesto == "fecha_publicada"
     print("Autocomprobación de puertas giratorias correcta.")
+
+
+def write_estatal_fixture(politicos: Path, borme: Path, bdns: Path, boe: Path) -> None:
+    connection = sqlite3.connect(politicos)
+    connection.execute(
+        """
+        CREATE TABLE politico (
+          id INTEGER PRIMARY KEY,
+          nombre TEXT, ap1 TEXT, ap2 TEXT, pila TEXT, rol TEXT, ambito TEXT, cuerpo TEXT,
+          municipio TEXT, ine TEXT, provincia TEXT, ccaa TEXT, desde TEXT, hasta TEXT,
+          partido TEXT, fuente TEXT, fuente_url TEXT, clave_organo TEXT, precision_fechas TEXT
+        )
+        """
+    )
+    connection.commit()
+    connection.close()
+
+    connection = sqlite3.connect(borme)
+    connection.execute(
+        "CREATE TABLE acto (id INTEGER PRIMARY KEY, fecha TEXT, cve TEXT, nombre TEXT, registro_key TEXT, personas TEXT)"
+    )
+    connection.execute(
+        "INSERT INTO acto (fecha, cve, nombre, registro_key, personas) VALUES (?,?,?,?,?)",
+        (
+            "2020-06-01",
+            "BORME-A-2020-80-28",
+            "ESTUDIOS ZUGASTI LARRANAGA SL",
+            "ZUGASTI1",
+            people_blob("ZUGASTI LARRANAGA NEREA"),
+        ),
+    )
+    connection.commit()
+    connection.close()
+
+    connection = sqlite3.connect(bdns)
+    connection.execute(
+        """
+        CREATE TABLE borme_empresa (
+          beneficiario_id INTEGER PRIMARY KEY,
+          registro_key TEXT, nif TEXT, nombre TEXT, confianza TEXT, capital REAL
+        )
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO borme_empresa (registro_key, nif, beneficiario_id, nombre, confianza, capital)
+        VALUES ('ZUGASTI1', 'B20202020', 20, 'ESTUDIOS ZUGASTI LARRANAGA SL', 'alta', 4000)
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE concesiones (
+          id INTEGER, nif TEXT, fecha TEXT, importe REAL, administracion TEXT, departamento TEXT,
+          organo TEXT, organismo TEXT, organismo_norm TEXT, ccaa TEXT, titulo TEXT, codigo_bdns TEXT,
+          instrumento_slug TEXT, beneficiario_id INTEGER
+        )
+        """
+    )
+    organismo = "Ministerio de Hacienda y Función Pública"
+    connection.execute(
+        """
+        INSERT INTO concesiones (
+          id, nif, fecha, importe, administracion, departamento, organo, organismo, organismo_norm,
+          ccaa, titulo, codigo_bdns, instrumento_slug, beneficiario_id
+        ) VALUES (20, 'B20202020', '2019-05-01', 60000, 'Estado', ?, '', ?, ?, 
+                  'Administración General del Estado', 'Ayuda industrial', 'BDNS-20', 'subvencion', 20)
+        """,
+        (organismo, organismo, fold_name(organismo)),
+    )
+    connection.execute(
+        "CREATE TABLE beneficiarios (id INTEGER PRIMARY KEY, nif TEXT, nombre TEXT, importe_total REAL, n_concesiones INTEGER)"
+    )
+    connection.execute(
+        "INSERT INTO beneficiarios (id, nif, nombre, importe_total, n_concesiones) VALUES (20, 'B20202020', 'ESTUDIOS ZUGASTI LARRANAGA SL', 60000, 1)"
+    )
+    connection.commit()
+    connection.close()
+
+    from boe_altos import Evento, connect, write_events
+
+    connection = connect(boe)
+    write_events(
+        connection,
+        "2020-01-14",
+        [
+            Evento(
+                "BOE-A-2020-100",
+                "cese",
+                "2020-01-13",
+                "2020-01-14",
+                "Nerea Zugasti Larrañaga",
+                "Directora general",
+                "MINISTERIO DE HACIENDA",
+                "Cese de prueba",
+                "https://www.boe.es/diario_boe/txt.php?id=BOE-A-2020-100",
+            )
+        ],
+        "ok",
+    )
+    connection.commit()
+    connection.close()
 
 
 def people_blob(display: str) -> str:
@@ -2116,6 +2322,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--db", type=Path, default=None)
     parser.add_argument("--politicos", type=Path, default=None)
     parser.add_argument("--borme", type=Path, default=None)
+    parser.add_argument("--boe", type=Path, default=None, help="SQLite de ceses II.A. Por defecto data/boe/altos.sqlite si existe.")
+    parser.add_argument("--sin-boe", action="store_true", help="No cruza altos cargos aunque exista la caché.")
     parser.add_argument(
         "--limit",
         type=int,
@@ -2137,6 +2345,8 @@ def main(argv: list[str] | None = None) -> None:
         args.politicos or POLITICOS_PATH,
         args.borme or BORME_PATH,
         args.limit,
+        boe_path=args.boe,
+        use_boe=not args.sin_boe,
     )
 
 

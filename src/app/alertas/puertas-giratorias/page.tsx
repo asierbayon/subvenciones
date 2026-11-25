@@ -227,8 +227,9 @@ const PuertasPage = async ({ searchParams }: { searchParams: Promise<AlertSearch
     <>
       <PageIntro eyebrow="Puertas giratorias" title="Quien deja el cargo y entra en la empresa que cobró">
         <p>
-          Un órgano local da subvenciones o contratos a una sociedad. Alguien que ocupó ese órgano deja el escaño y, en
-          los cuatro años siguientes, el BORME le nombra administrador o consejero de esa sociedad.
+          Un órgano da subvenciones o contratos a una sociedad. Alguien que ocupó ese órgano deja el escaño y, en los
+          cuatro años siguientes, el BORME le nombra administrador o consejero de esa sociedad. Si se ha generado la
+          caché de la sección II.A del BOE, el mismo cruce incluye altos cargos del Estado cesados en un ministerio.
         </p>
         <p>
           El cese de 2015 es el 14 jun 2019 si esa persona no está en el fichero de 2019. El de 2019 es el 16 jun 2023:

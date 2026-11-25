@@ -50,7 +50,7 @@ const signals = [
   {
     href: "/alertas/puertas-giratorias",
     title: "Puertas giratorias",
-    text: "Quien deja un cargo local y, después, el BORME le nombra administrador de una sociedad que cobró de ese órgano.",
+    text: "Quien deja el cargo y, después, el BORME le nombra administrador de una sociedad que cobró de ese órgano.",
     table: "alert_puerta",
   },
   {
