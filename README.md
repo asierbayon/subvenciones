@@ -327,6 +327,55 @@ python3 pipeline/vinculos.py
 
 `pnpm alerts` solo lanza el fraccionamiento. `pnpm contratos`, `pnpm borme`, `pnpm politicos` y `pnpm vinculos` equivalen a los comandos de Python correspondientes. El orden es el de arriba: cada paso lee el índice que escribió el anterior.
 
+## Rehacer indicadores en un índice que ya existe
+
+En el servidor (`/opt/faro-new`, base `data/bdns.sqlite`, BORME en `data/borme`, CSV en `data/raw`) no hace falta volver a bajar nada ni reconstruir el índice. Desde esa raíz, en este orden. Los tiempos son una orientación para el volcado completo en una máquina de 2 GB: el agrupado va a disco.
+
+```bash
+cd /opt/faro-new
+
+# 1. Menores repetidos bajo el umbral. Lee placsp_contrato. No baja ZIP.
+#    Unos minutos. No cambia el esquema de las concesiones; añade columnas a alert_contrato si faltan
+#    y la tabla alert_contrato_pieza.
+python3 pipeline/contratos.py --menor-umbral
+
+# 2. Vínculos políticos, sin las empresas municipales. Lee politico y borme_admins.
+#    Minutos. No migra esquema.
+python3 pipeline/vinculos.py
+
+# 3. Causa del cierre en el BORME y el indicador de sociedad.
+#    aggregate relee data/borme (sin red) si la tabla acto sigue ahí, y rellena sociedad.cierre.
+#    Si run ya borró acto, aggregate no puede recuperar la frase: alerts deja cierre vacío
+#    y no descarta las fusiones. alerts rehace solo alert_borme_sociedad.
+#    aggregate: del orden de una hora si hay millones de actos. alerts: unos minutos.
+#    Esquema: columna cierre en acto, sociedad y borme_empresa (ALTER o tabla nueva al agregar).
+python3 pipeline/borme.py aggregate
+python3 pipeline/borme.py alerts
+
+# 4. Una sola fila por concesión idéntica. No relee los CSV.
+#    Unos minutos. Crea concesion_dup y sustituye la vista concesiones. No reescribe la tabla de concesiones.
+python3 pipeline/build_index.py --dedupe
+
+# 5. Separa garantías y subvenciones en los totales del panel y de las fichas.
+#    Unos minutos. ALTER de columnas en beneficiario y convocatoria, y ámbito garantia en las stats.
+python3 pipeline/build_index.py --totals
+
+# 6. Indicadores de la propia BDNS, ya con filas únicas y sin garantías en las sumas.
+#    Cada uno, de minutos a una hora según el paso. No migran el esquema base.
+python3 pipeline/alerts.py fraccionamiento
+python3 pipeline/alerts.py concentracion
+python3 pipeline/alerts.py calendario
+python3 pipeline/alerts.py estadistica
+python3 pipeline/alerts.py directa
+
+# 7. Cruce de contratos otra vez: misma administración solo con NIF A/B y menor o sin concurrencia,
+#    y las sumas de ayuda sin garantías. Incluye otra vez el paso 1. No baja ZIP.
+#    Puede tardar más que --menor-umbral porque recorre cada contrato contra las concesiones.
+python3 pipeline/contratos.py --alerts-only
+```
+
+El paso 7 repite el detector de menores. Si se acaba de ejecutar el 1 y no se quiere rehacer todo el cruce, se puede omitir el 7 solo cuando no haga falta la criba de NIF A/B; en este cambio sí hace falta. `directa` no cambió de regla, pero conviene repetirlo para que lea la vista ya deduplicada.
+
 ## Arranque
 
 Hace falta Node.js 22 y Python 3.10 o superior. El pipeline solo usa la biblioteca estándar.
