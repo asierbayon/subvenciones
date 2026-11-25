@@ -49,5 +49,8 @@ next-env.d.ts
 # BORME extract (rebuild with python3 pipeline/borme.py). Do not commit the bulletin cache.
 /data/borme/
 
+# BOE section II.A cache (rebuild with python3 pipeline/boe_altos.py).
+/data/boe/
+
 __pycache__/
 *.pyc

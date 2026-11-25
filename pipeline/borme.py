@@ -11,6 +11,13 @@ that index.
     python3 pipeline/borme.py aggregate
     python3 pipeline/borme.py match
 
+``aggregate --compact`` drops the raw announcements and keeps ``sociedad``
+(including ``cierre``) plus ``persona_cargo``: the earliest appointment, a
+later one when it exists, and the latest dismissal, with the gazette id.
+That table is what the revolving-door indicator reads. A later ``fetch``
+skips a finished day only while its announcements are still stored. After
+compaction it asks for those days again, and an interrupted retry resumes.
+
 Stdlib only. Python 3.10+.
 """
 
@@ -22,6 +29,7 @@ import re
 import socket
 import sqlite3
 import sys
+import tempfile
 import threading
 import time
 import unicodedata
@@ -210,6 +218,10 @@ ROLE_RE = re.compile(
     r"Cons\.Del\.Sol|Cons\.Del\.Man|Con\.Delegado|Consejero|"
     r"Presidente|Vicepresid\.|Dir\.\s*General|Socio\s+[ÚúUu]nico"
     r")\s*:\s*"
+)
+# Longer labels first so "Ceses/Dimisiones" is not read as "Ceses".
+ACTION_RE = re.compile(
+    r"(?:^|\.\s+)(Reelecciones|Nombramientos|Ceses/Dimisiones|Ceses|Dimisiones|Revocaciones)\b"
 )
 MONEY_RE = re.compile(
     r"(Resultante\s+Suscrito|Capital\s+suscrito|Capital)\s*:\s*(\d[\d.]*)(?:\s*,\s*(\d{1,2}))?\s*Euros",
@@ -476,11 +488,20 @@ def persona_identity(name: str) -> tuple[str, str]:
     return folded, "P"
 
 
-def people_from(text: str) -> list[tuple[str, str, str, str]]:
-    """Return (rol A/S, display name, key, kind P/E) for directors and sole shareholders."""
+def accion_de(label: str) -> str:
+    folded = fold(label)
+    if folded.startswith("REELECC"):
+        return "reeleccion"
+    if folded.startswith("CES") or folded.startswith("DIMIS") or folded.startswith("REVOC"):
+        return "cese"
+    return "nombramiento"
+
+
+def people_in_span(text: str, accion: str, limit: int) -> list[tuple[str, str, str, str, str]]:
+    """People under one heading. ``accion`` is nombramiento, cese or reeleccion."""
     matches = list(ROLE_RE.finditer(text or ""))
-    found: list[tuple[str, str, str, str]] = []
-    seen: set[tuple[str, str]] = set()
+    found: list[tuple[str, str, str, str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
     for index, match in enumerate(matches):
         start = match.end()
         end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
@@ -495,27 +516,70 @@ def people_from(text: str) -> list[tuple[str, str, str, str]]:
             key, kind = persona_identity(display)
             if not key:
                 continue
-            marker = (rol, key)
+            marker = (accion, rol, key)
             if marker in seen:
                 continue
             seen.add(marker)
-            found.append((rol, display, key, kind))
+            found.append((rol, display, key, kind, accion))
+            if len(found) >= limit:
+                return found
+    return found
+
+
+def people_from(text: str) -> list[tuple[str, str, str, str, str]]:
+    """Return (rol A/S, display name, key, kind P/E, accion) for directors and sole shareholders.
+
+    ``accion`` is nombramiento, cese or reeleccion, taken from the heading
+    (Nombramientos, Ceses/Dimisiones, Reelecciones). A role before any heading
+    counts as a nombramiento. The same person can be both dismissed and appointed.
+    """
+    body = text or ""
+    marks = list(ACTION_RE.finditer(body))
+    spans: list[tuple[str, str]] = []
+    if not marks:
+        spans.append(("nombramiento", body))
+    else:
+        if marks[0].start() > 0:
+            spans.append(("nombramiento", body[: marks[0].start()]))
+        for index, mark in enumerate(marks):
+            end = marks[index + 1].start() if index + 1 < len(marks) else len(body)
+            spans.append((accion_de(mark.group(1)), body[mark.end() : end]))
+    found: list[tuple[str, str, str, str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for accion, span in spans:
+        for person in people_in_span(span, accion, 12 - len(found)):
+            marker = (person[4], person[0], person[2])
+            if marker in seen:
+                continue
+            seen.add(marker)
+            found.append(person)
             if len(found) >= 12:
                 return found
     return found
 
 
-def encode_people(people: list[tuple[str, str, str, str]]) -> str:
-    return "\n".join(f"{rol}\t{name}\t{key}\t{kind}" for rol, name, key, kind in people)
+def encode_people(people: list[tuple]) -> str:
+    lines: list[str] = []
+    for item in people:
+        if len(item) == 4:
+            rol, name, key, kind = item
+            accion = "nombramiento"
+        else:
+            rol, name, key, kind, accion = item
+        lines.append(f"{rol}\t{name}\t{key}\t{kind}\t{accion}")
+    return "\n".join(lines)
 
 
-def decode_people(blob: str) -> list[tuple[str, str, str, str]]:
-    rows: list[tuple[str, str, str, str]] = []
+def decode_people(blob: str) -> list[tuple[str, str, str, str, str]]:
+    """Five fields. Older rows without ``accion`` are read as a nombramiento."""
+    rows: list[tuple[str, str, str, str, str]] = []
     for line in (blob or "").split("\n"):
         parts = line.split("\t")
-        if len(parts) != 4:
+        if len(parts) == 4:
+            rows.append((parts[0], parts[1], parts[2], parts[3], "nombramiento"))
             continue
-        rows.append((parts[0], parts[1], parts[2], parts[3]))
+        if len(parts) == 5:
+            rows.append((parts[0], parts[1], parts[2], parts[3], parts[4] or "nombramiento"))
     return rows
 
 
@@ -732,7 +796,19 @@ def self_check() -> None:
         "Nombramientos. Adm. Unico: GRENERGY RENOVABLES SA. Consejero: BOVEDA DAMBORENEA JAVIER. "
         "Cons.Del.Man: BOVEDA DAMBORENEA JAVIER. Socio único: LOMBARDERO PEREZ DELIO."
     )
-    keys = {(rol, key) for rol, _name, key, _kind in people}
+    keys = {(rol, key) for rol, _name, key, _kind, _accion in people}
+    acciones = {key: accion for _rol, _name, key, _kind, accion in people}
+    assert acciones["GRENERGY RENOVABLES"] == "nombramiento"
+    assert acciones["LOMBARDERO PEREZ DELIO"] == "nombramiento"
+    separated = people_from(
+        "Ceses/Dimisiones. Adm. Unico: LOPEZ RUIZ MARIA. "
+        "Nombramientos. Adm. Unico: PEREZ GARCIA JUAN. "
+        "Reelecciones. Consejero: SANZ DIEGO OLMO."
+    )
+    by_person = {key: accion for _rol, _name, key, _kind, accion in separated}
+    assert by_person["LOPEZ RUIZ MARIA"] == "cese"
+    assert by_person["PEREZ GARCIA JUAN"] == "nombramiento"
+    assert by_person["SANZ DIEGO OLMO"] == "reeleccion"
     assert ("A", "GRENERGY RENOVABLES") in keys
     assert ("A", "BOVEDA DAMBORENEA JAVIER") in keys
     assert ("S", "LOMBARDERO PEREZ DELIO") in keys
@@ -801,7 +877,117 @@ def self_check() -> None:
     assert reduced["cierre"] == ""
     assert reduced["n_anuncios"] == 2
     assert "ECLIMAB APLICACIONES" in reduced["nombres"]
+
+    def cargo_act(fecha: str, cve: str, accion: str) -> Acto:
+        return Acto(
+            fecha=fecha,
+            cve=cve,
+            provincia="MADRID",
+            anuncio="1",
+            nombre="TALLERES PEREZ SL",
+            nombre_key="TALLERES PEREZ",
+            hoja="M 1",
+            registro_key="M 1",
+            constitucion=0,
+            fecha_constitucion=None,
+            disolucion=0,
+            fecha_disolucion=None,
+            capital=None,
+            domicilio="",
+            domicilio_key="",
+            personas=encode_people([("A", "PEREZ GARCIA JUAN", "PEREZ GARCIA JUAN", "P", accion)]),
+            nif="",
+        )
+
+    traced = reduce_acts(
+        [
+            cargo_act("2018-01-01", "BORME-A-2018-1-28", "nombramiento"),
+            cargo_act("2019-06-01", "BORME-A-2019-2-28", "cese"),
+            cargo_act("2021-03-01", "BORME-A-2021-3-28", "reeleccion"),
+        ]
+    )
+    assert len(traced["cargos"]) == 1
+    _rol, _key, alta, accion_alta, _cve_alta, ultimo, accion_ultimo, _cve_ultimo, cese, _cve_cese = traced["cargos"][0]
+    assert alta == "2018-01-01" and accion_alta == "nombramiento"
+    assert ultimo == "2021-03-01" and accion_ultimo == "reeleccion"
+    assert cese == "2019-06-01"
+    assert reduce_acts([cargo_act("2019-01-01", "BORME-A-2019-9-28", "cese")])["cargos"] == []
+
+    with tempfile.TemporaryDirectory() as tmp:
+        probe = sqlite3.connect(Path(tmp) / "dia.sqlite")
+        probe.execute("CREATE TABLE acto (fecha TEXT)")
+        probe.execute("CREATE TABLE borme_doc (fecha TEXT, estado TEXT, n INTEGER)")
+        probe.execute("INSERT INTO borme_doc VALUES ('2020-01-02', 'ok', 3)")
+        assert dia_completo(probe, "2020-01-02", "ok") is False
+        probe.execute("INSERT INTO acto VALUES ('2020-01-02')")
+        assert dia_completo(probe, "2020-01-02", "ok") is True
+        assert dia_completo(probe, "2020-01-03", "vacio") is True
+        assert dia_completo(probe, "2020-01-04", "error") is False
+        probe.execute("INSERT INTO borme_doc VALUES ('2020-01-05', 'ok', 0)")
+        assert dia_completo(probe, "2020-01-05", "ok") is True
+        probe.close()
     log("Autocomprobación de BORME correcta.")
+
+
+class CargoSlot:
+    """First appointment and last later one, plus the latest dismissal.
+
+    One company can publish the same person several times. Keeping every
+    announcement would dominate the compact file. The first date says whether
+    they were already on the board; the last says whether they came back.
+    """
+
+    def __init__(self) -> None:
+        self.fecha_alta = ""
+        self.accion_alta = ""
+        self.cve_alta = ""
+        self.fecha_ultimo = ""
+        self.accion_ultimo = ""
+        self.cve_ultimo = ""
+        self.fecha_cese = ""
+        self.cve_cese = ""
+
+
+def anotar_cargo(slot: CargoSlot, accion: str, fecha: str, cve: str) -> None:
+    if not fecha:
+        return
+    if accion == "cese":
+        if not slot.fecha_cese or (fecha, cve) > (slot.fecha_cese, slot.cve_cese):
+            slot.fecha_cese = fecha
+            slot.cve_cese = cve
+        return
+    if accion != "reeleccion":
+        accion = "nombramiento"
+    rank = 0 if accion == "nombramiento" else 1
+    if not slot.fecha_alta:
+        slot.fecha_alta = fecha
+        slot.accion_alta = accion
+        slot.cve_alta = cve
+        return
+    old_rank = 0 if slot.accion_alta == "nombramiento" else 1
+    if (fecha, rank, cve) < (slot.fecha_alta, old_rank, slot.cve_alta):
+        if not slot.fecha_ultimo or slot.fecha_alta > slot.fecha_ultimo:
+            slot.fecha_ultimo = slot.fecha_alta
+            slot.accion_ultimo = slot.accion_alta
+            slot.cve_ultimo = slot.cve_alta
+        slot.fecha_alta = fecha
+        slot.accion_alta = accion
+        slot.cve_alta = cve
+        if slot.fecha_ultimo == slot.fecha_alta:
+            slot.fecha_ultimo = ""
+            slot.accion_ultimo = ""
+            slot.cve_ultimo = ""
+        return
+    if fecha <= slot.fecha_alta:
+        return
+    if not slot.fecha_ultimo or (fecha, cve) > (slot.fecha_ultimo, slot.cve_ultimo):
+        slot.fecha_ultimo = fecha
+        slot.accion_ultimo = accion
+        slot.cve_ultimo = cve
+        return
+    if fecha == slot.fecha_ultimo and accion == "nombramiento" and slot.accion_ultimo != "nombramiento":
+        slot.accion_ultimo = accion
+        slot.cve_ultimo = cve
 
 
 def reduce_acts(acts: list[Acto]) -> dict:
@@ -809,6 +995,7 @@ def reduce_acts(acts: list[Acto]) -> dict:
     first = ordered[0]
     nombres: dict[str, str] = {}
     people: dict[tuple[str, str], tuple[str, str]] = {}
+    cargos: dict[tuple[str, str], CargoSlot] = {}
     capitals: list[str] = []
     fecha_const = None
     capital_const = None
@@ -840,8 +1027,15 @@ def reduce_acts(acts: list[Acto]) -> dict:
             domicilio = act.domicilio
             domicilio_norm = act.domicilio_key
             fuente_dom = act.cve
-        for rol, name, key, kind in decode_people(act.personas):
+        for rol, name, key, kind, accion in decode_people(act.personas):
             people.setdefault((rol, key), (name, kind))
+            if kind != "P" or not key:
+                continue
+            slot = cargos.get((rol, key))
+            if slot is None:
+                slot = CargoSlot()
+                cargos[(rol, key)] = slot
+            anotar_cargo(slot, accion, act.fecha, act.cve)
     if len(capitals) > 8:
         capitals = capitals[:4] + capitals[-4:]
     latest_capital = None
@@ -876,6 +1070,22 @@ def reduce_acts(acts: list[Acto]) -> dict:
         "fecha_ultimo": ordered[-1].fecha,
         "nif": ",".join(nifs),
         "personas": people,
+        "cargos": [
+            (
+                rol,
+                key,
+                slot.fecha_alta,
+                slot.accion_alta,
+                slot.cve_alta,
+                slot.fecha_ultimo,
+                slot.accion_ultimo,
+                slot.cve_ultimo,
+                slot.fecha_cese,
+                slot.cve_cese,
+            )
+            for (rol, key), slot in cargos.items()
+            if slot.fecha_alta
+        ],
     }
 
 
@@ -1076,6 +1286,28 @@ def insert_acts(connection: sqlite3.Connection, acts: list[Acto]) -> None:
     )
 
 
+def dia_completo(connection: sqlite3.Connection, iso: str, estado: str) -> bool:
+    """Whether this day can be skipped.
+
+    A day marked done is skipped when its announcements are still in ``acto``,
+    or when the parser stored none. After compaction ``acto`` is gone, so a day
+    whose documents had company rows is downloaded again. A crash in that second
+    pass leaves the restored days in ``acto`` and skips them next time.
+    """
+    if estado == "vacio":
+        return True
+    if estado != "ok":
+        return False
+    present = connection.execute("SELECT 1 FROM acto WHERE fecha = ? LIMIT 1", (iso,)).fetchone()
+    if present:
+        return True
+    claimed = connection.execute(
+        "SELECT 1 FROM borme_doc WHERE fecha = ? AND estado = 'ok' AND n > 0 LIMIT 1",
+        (iso,),
+    ).fetchone()
+    return claimed is None
+
+
 def fetch(start: str, end: str, workers: int, gap: float) -> None:
     socket.setdefaulttimeout(30)
     start_day = datetime.strptime(start, "%Y-%m-%d")
@@ -1088,14 +1320,33 @@ def fetch(start: str, end: str, workers: int, gap: float) -> None:
     pace = Pace(gap)
     consecutive_errors = 0
     log(f"BORME {start} → {end}: {len(days)} días laborables, {workers} peticiones en paralelo")
+    if table_exists(connection, "borme_dia") and table_exists(connection, "acto"):
+        missing = connection.execute(
+            """
+            SELECT COUNT(*) FROM borme_dia d
+            WHERE d.estado = 'ok'
+              AND NOT EXISTS (SELECT 1 FROM acto a WHERE a.fecha = d.fecha)
+              AND EXISTS (
+                SELECT 1 FROM borme_doc g WHERE g.fecha = d.fecha AND g.estado = 'ok' AND g.n > 0
+              )
+            """
+        ).fetchone()[0]
+        if missing:
+            log(
+                f"{missing} días figuran como hechos pero sus anuncios se borraron al compactar. "
+                "Se vuelven a pedir. Un día ya reescrito no se repite si el proceso se corta."
+            )
     try:
         with ThreadPoolExecutor(max_workers=workers) as pool:
             for index, day in enumerate(days, start=1):
                 iso = day.strftime("%Y-%m-%d")
                 ymd = day.strftime("%Y%m%d")
                 status = connection.execute("SELECT estado FROM borme_dia WHERE fecha = ?", (iso,)).fetchone()
-                if status and status[0] in ("ok", "vacio"):
+                restore = False
+                if status and dia_completo(connection, iso, status[0]):
                     continue
+                if status and status[0] == "ok":
+                    restore = True
                 try:
                     summary = fetch_bytes(SUMARIO.format(ymd=ymd), pace)
                 except Exception as exc:
@@ -1138,7 +1389,10 @@ def fetch(start: str, end: str, workers: int, gap: float) -> None:
                     )
                     connection.commit()
                     continue
-                pending = [doc for doc in docs if not doc_ok(connection, doc.cve)]
+                if restore:
+                    pending = docs
+                else:
+                    pending = [doc for doc in docs if not doc_ok(connection, doc.cve)]
                 failed = False
                 futures = {pool.submit(fetch_bytes, doc.url, pace): doc for doc in pending}
                 for future in as_completed(futures):
@@ -1215,6 +1469,7 @@ def aggregate(compact: bool) -> None:
         if pending:
             log(f"Hay {pending} días con error. Se agrega lo descargado; vuelve a lanzar fetch para reintentar.")
         log("Agregando anuncios por hoja registral")
+        connection.execute("DROP TABLE IF EXISTS persona_cargo")
         connection.execute("DROP TABLE IF EXISTS sociedad_persona")
         connection.execute("DROP TABLE IF EXISTS sociedad_nombre")
         connection.execute("DROP TABLE IF EXISTS sociedad")
@@ -1255,6 +1510,24 @@ def aggregate(compact: bool) -> None:
               nombre_key TEXT NOT NULL,
               nombre TEXT NOT NULL,
               kind TEXT NOT NULL,
+              PRIMARY KEY (registro_key, rol, nombre_key)
+            );
+            -- One row per person and role. fecha_alta is the earliest
+            -- nombramiento or, failing that, reeleccion. fecha_ultimo is a
+            -- later one. fecha_cese is the latest dismissal. Empty strings
+            -- mean that event was not seen. Survives compaction.
+            CREATE TABLE persona_cargo (
+              registro_key TEXT NOT NULL,
+              nombre_key TEXT NOT NULL,
+              rol TEXT NOT NULL,
+              fecha_alta TEXT NOT NULL,
+              accion_alta TEXT NOT NULL,
+              cve_alta TEXT NOT NULL,
+              fecha_ultimo TEXT NOT NULL DEFAULT '',
+              accion_ultimo TEXT NOT NULL DEFAULT '',
+              cve_ultimo TEXT NOT NULL DEFAULT '',
+              fecha_cese TEXT NOT NULL DEFAULT '',
+              cve_cese TEXT NOT NULL DEFAULT '',
               PRIMARY KEY (registro_key, rol, nombre_key)
             );
             """
@@ -1321,6 +1594,42 @@ def aggregate(compact: bool) -> None:
                     for (rol, key), (name, kind) in profile["personas"].items()
                 ],
             )
+            if profile["cargos"]:
+                connection.executemany(
+                    """
+                    INSERT INTO persona_cargo (
+                      registro_key, rol, nombre_key, fecha_alta, accion_alta, cve_alta,
+                      fecha_ultimo, accion_ultimo, cve_ultimo, fecha_cese, cve_cese
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    [
+                        (
+                            profile["registro_key"],
+                            rol,
+                            key,
+                            fecha_alta,
+                            accion_alta,
+                            cve_alta,
+                            fecha_ultimo,
+                            accion_ultimo,
+                            cve_ultimo,
+                            fecha_cese,
+                            cve_cese,
+                        )
+                        for (
+                            rol,
+                            key,
+                            fecha_alta,
+                            accion_alta,
+                            cve_alta,
+                            fecha_ultimo,
+                            accion_ultimo,
+                            cve_ultimo,
+                            fecha_cese,
+                            cve_cese,
+                        ) in profile["cargos"]
+                    ],
+                )
             written += 1
             if written % 50000 == 0:
                 connection.commit()
@@ -1341,6 +1650,7 @@ def aggregate(compact: bool) -> None:
             CREATE INDEX IF NOT EXISTS idx_soc_nombre ON sociedad_nombre(nombre_key);
             CREATE INDEX IF NOT EXISTS idx_soc_persona ON sociedad_persona(nombre_key);
             CREATE INDEX IF NOT EXISTS idx_soc_dom ON sociedad(domicilio_key);
+            CREATE INDEX IF NOT EXISTS idx_persona_cargo_nombre ON persona_cargo(nombre_key);
             """
         )
         n_soc = connection.execute("SELECT COUNT(*) FROM sociedad").fetchone()[0]
@@ -1352,9 +1662,14 @@ def aggregate(compact: bool) -> None:
         meta_set(connection, "n_actos_con_hoja", str(n_hoja))
         meta_set(connection, "n_actos_con_nif", str(n_nif))
         connection.commit()
-        log(f"Sociedades {n_soc}; anuncios {n_act}; con hoja {n_hoja}; con NIF etiquetado {n_nif}")
+        n_cargo = connection.execute("SELECT COUNT(*) FROM persona_cargo").fetchone()[0]
+        meta_set(connection, "n_persona_cargo", str(n_cargo))
+        log(
+            f"Sociedades {n_soc}; anuncios {n_act}; con hoja {n_hoja}; con NIF etiquetado {n_nif}; "
+            f"cargos con fecha {n_cargo}"
+        )
         if compact:
-            log("Compactando: se borran los anuncios sueltos y se vacía el fichero")
+            log("Compactando: se borran los anuncios sueltos. Quedan sociedad, personas y persona_cargo.")
             connection.execute("DROP TABLE acto")
             connection.commit()
             connection.execute("VACUUM")
