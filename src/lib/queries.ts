@@ -90,6 +90,8 @@ export type Concesion = {
   ccaa: string;
   sector: string;
   beneficiarioId: number | null;
+  esDuplicado: boolean;
+  canonId: number | null;
 };
 
 export type Beneficiario = {
@@ -192,6 +194,8 @@ const mapConcesion = (row: Row): Concesion => ({
   ccaa: asString(row.ccaa),
   sector: asString(row.sector),
   beneficiarioId: asNumberOrNull(row.beneficiario_id),
+  esDuplicado: asNumber(row.es_duplicado ?? 0) === 1,
+  canonId: asNumberOrNull(row.canon_id ?? null),
 });
 
 const mapBeneficiario = (row: Row): Beneficiario => ({
@@ -303,6 +307,13 @@ const hydrate = async (view: string, ids: number[]) => {
     }
   }
   return ordered;
+};
+
+const hasDuplicateTable = async () => {
+  const row = await queryGet(
+    "SELECT 1 AS n FROM sqlite_master WHERE type = 'table' AND name = 'concesion_dup'",
+  );
+  return row !== null;
 };
 
 const whereSql = (clauses: string[]) => {
@@ -439,6 +450,9 @@ export const searchConcesiones = async (
     clauses.push("c.id_convocatoria = ?");
     params.push(scope.convocatoriaId);
   }
+  if (await hasDuplicateTable()) {
+    clauses.push("NOT EXISTS (SELECT 1 FROM concesion_dup d WHERE d.concesion_id = c.id)");
+  }
   const from = "FROM concesion c";
   if (fts) {
     clauses.unshift(
@@ -547,10 +561,22 @@ export const getConvocatoria = async (codigo: string) => {
 
 export const getConcesion = async (id: number) => {
   const row = await queryGet("SELECT * FROM concesiones WHERE id = ?", [id]);
-  if (!row) {
-    return null;
+  if (row) {
+    return mapConcesion(row);
   }
-  return mapConcesion(row);
+  try {
+    const raw = await queryGet("SELECT * FROM concesiones_brutas WHERE id = ?", [id]);
+    if (!raw) {
+      return null;
+    }
+    return mapConcesion(raw);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("no such table") || message.includes("no such view")) {
+      return null;
+    }
+    throw error;
+  }
 };
 
 export const getBeneficiario = async (id: number) => {
@@ -558,19 +584,27 @@ export const getBeneficiario = async (id: number) => {
   if (!row) {
     return null;
   }
+  const skipDup = (await hasDuplicateTable())
+    ? "AND NOT EXISTS (SELECT 1 FROM concesion_dup d WHERE d.concesion_id = concesion.id)"
+    : "";
   const years = await queryAll(
     `SELECT anio, COUNT(*) AS n, COALESCE(SUM(importe), 0) AS importe
      FROM concesion
      WHERE beneficiario_id = ? AND anio IS NOT NULL
+     ${skipDup}
      GROUP BY anio
      ORDER BY anio`,
     [id],
   );
+  const skipDupAlias = (await hasDuplicateTable())
+    ? "AND NOT EXISTS (SELECT 1 FROM concesion_dup d WHERE d.concesion_id = c.id)"
+    : "";
   const territorios = await queryAll(
     `SELECT ca.nombre AS label, COUNT(*) AS n, COALESCE(SUM(c.importe), 0) AS importe
      FROM concesion c
      JOIN lut_ccaa ca ON ca.id = c.ccaa_id
      WHERE c.beneficiario_id = ?
+     ${skipDupAlias}
      GROUP BY ca.nombre
      ORDER BY importe DESC
      LIMIT 8`,

@@ -91,6 +91,14 @@ El script enriquece tres campos que el CSV no trae, y la interfaz los marca como
 - Cerca del 1,4 % de las convocatorias queda en «No determinada»: homónimos (Torrent está en Girona y en Valencia) y nombres que el padrón no resuelve. Los bilingües con barra (`ELCHE/ELX`, `ALCOY/ALCOI`) sí se asignan.
 - Los importes de garantías y préstamos no son una entrega de dinero. El panel abre en «Solo subvenciones» y permite sumar todos los instrumentos.
 - El beneficiario se agrupa por NIF. Sin NIF, por el nombre normalizado.
+
+Las filas idénticas en beneficiario, convocatoria, fecha, importe e instrumento se conservan en la tabla, pero los totales, el panel y las alertas cuentan una sola: la de identificador más bajo. El resto queda marcado en `concesion_dup`. Sobre un índice ya construido, sin volver a bajar los CSV:
+
+```bash
+python3 pipeline/build_index.py --dedupe
+```
+
+Añade la tabla `concesion_dup` y sustituye la vista `concesiones`. No migra el resto del esquema. En un índice de este tamaño son unos minutos; el agrupado va a disco (`temp_store=FILE`) para caber en poca RAM. Después hay que rehacer los indicadores que lean importes, porque los que ya estaban calculados sumaron las copias.
 - La foto termina en 2022. Volver a lanzar el pipeline vuelve a bajar los mismos ficheros mientras el repositorio archivado no cambie. La BDNS oficial, desde la renovación del portal, ya ofrece descarga; este proyecto no la mezcla con el volcado de Obregón.
 
 ## Alertas
