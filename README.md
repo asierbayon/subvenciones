@@ -193,7 +193,15 @@ Ejemplos reales del pase:
 - CAMPO ABADIA SL (B42819029) se constituye el 1 feb 2021, cobra del instituto de competitividad de Castilla y León y se extingue el 12 ene 2023 (`BORME-A-2023-8-37`).
 - Doce sociedades distintas cobran de la Consejería de Economía de Madrid y el BORME nombra administrador a GRUPO LARRUMBA HOLDING SL.
 
-Límites que el indicador no resuelve: una extinción puede ser una fusión (el anuncio dice «Disolución. Fusión. Extinción» y aquí cuenta como cierre); el capital de 1 € puede ser una limitada en formación sucesiva, que es legal; el administrador se publica sin DNI, así que un homónimo basta para enlazar dos sociedades; el domicilio de una gestoría concentra empresas que no forman un grupo.
+La causa del cierre se lee del texto del anuncio y se guarda en `acto.cierre` y `sociedad.cierre` (`fusion`, `escision`, `voluntaria`, `concurso`, `extincion`, `provisional`, `disolucion`). Una disolución por fusión, absorción o escisión no entra en `disuelta_pronto` ni en `nueva_disuelta`: no es una sociedad que cierra después de cobrar. El texto del indicador distingue disolución voluntaria, concurso y extinción. Rehacer solo ese indicador, sin volver a bajar el BORME y sin rehacer el cruce de nombres:
+
+```bash
+python3 pipeline/borme.py alerts
+```
+
+Si el extracto se agregó antes de guardar `cierre`, la columna queda vacía y el indicador no puede separar una fusión. En ese caso hace falta `python3 pipeline/borme.py aggregate` mientras la tabla `acto` siga en `data/borme/borme.sqlite` (no si `run` ya la compactó y tiró los anuncios). Agregar no descarga: relee los actos. Después, `alerts`.
+
+Límites que el indicador no resuelve: el capital de 1 € puede ser una limitada en formación sucesiva, que es legal; el administrador se publica sin DNI, así que un homónimo basta para enlazar dos sociedades; el domicilio de una gestoría concentra empresas que no forman un grupo. Un extracto compactado antes de este cambio no conserva la frase del anuncio, así que no se puede reclasificar sin volver a leer esos documentos.
 
 ```bash
 python3 pipeline/contratos.py
