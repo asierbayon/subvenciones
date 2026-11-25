@@ -12,6 +12,7 @@
     "contratos": "python3 pipeline/contratos.py",
     "politicos": "python3 pipeline/politicos.py",
     "vinculos": "python3 pipeline/vinculos.py",
+    "puertas": "python3 pipeline/puertas_giratorias.py",
     "lint": "eslint"
   },
   "dependencies": {
