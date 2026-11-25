@@ -11,8 +11,10 @@ index and it does not download the BORME again.
 Inputs, overridable with flags or ``BDNS_DB``, ``POLITICOS_DB`` and ``BORME_DB``:
 
 - ``data/politicos.sqlite`` — concejales, alcaldes and cabildos for 2015 and 2019
-- ``data/borme/borme.sqlite`` — table ``acto`` (dates). A compact extract that
-  dropped ``acto`` cannot be used: the aggregated people have no appointment date
+- ``data/borme/borme.sqlite`` — table ``persona_cargo`` (first appointment, a
+  later one, and the latest dismissal). ``acto`` is only a fallback while it
+  still exists. If compaction removed it and ``persona_cargo`` was never
+  built, the command stops and says how to fetch again.
 - ``data/bdns.sqlite`` — ``borme_empresa``, concessions, and ``placsp_contrato``
   when the contracts step has been run
 - ``data/boe/altos.sqlite`` — optional. Built by ``pipeline/boe_altos.py`` from
@@ -26,11 +28,11 @@ Assumptions about the end of the mandate, stated on every row:
 - There is no 2023 electoral file. Every 2019 office is treated as ended on
   16 Jun 2023, even if that person was re-elected. A row can name someone who
   was still in the seat.
-- The appointment date is the first BORME publication in which that name appears
-  with an administration role on that registry sheet. The extract does not
-  separate appointments from dismissals, and it does not store attorneys-in-fact
-  (``apoderados``). A dismissal of someone appointed before 2016 can look like a
-  first appointment.
+- The appointment date is the earliest nombramiento on that registry sheet, or
+  a later nombramiento or reelección when the earliest one falls before the
+  person leaves office. A cese is not an appointment. The compact table keeps
+  the first date and the last one, not every notice in between. Attorneys-in-fact
+  are not in the extract. The date is the gazette day, not the inscription day.
 - The gazette date is the publication day, not the inscription day printed in
   the paragraph.
 - Money is subsidies (not guarantees or loans) plus PLACSP awards, from an organ
@@ -262,14 +264,16 @@ def borme_url(cve: str) -> str:
     return f"https://www.boe.es/diario_borme/txt.php?id={cve}"
 
 
-def decode_people(blob: str) -> list[tuple[str, str, str, str]]:
-    """Same tab layout ``borme.encode_people`` writes: rol, name, key, kind."""
-    rows: list[tuple[str, str, str, str]] = []
+def decode_people(blob: str) -> list[tuple[str, str, str, str, str]]:
+    """Same tab layout ``borme.encode_people`` writes. A 4-field row is a nombramiento."""
+    rows: list[tuple[str, str, str, str, str]] = []
     for line in (blob or "").split("\n"):
         parts = line.split("\t")
-        if len(parts) != 4:
+        if len(parts) == 4:
+            rows.append((parts[0], parts[1], parts[2], parts[3], "nombramiento"))
             continue
-        rows.append((parts[0], parts[1], parts[2], parts[3]))
+        if len(parts) == 5:
+            rows.append((parts[0], parts[1], parts[2], parts[3], parts[4] or "nombramiento"))
     return rows
 
 
@@ -439,6 +443,15 @@ class Mencion:
     confianza: float
     lugares: int
     modo: str
+    accion: str = "nombramiento"
+    fecha_alta: str = ""
+    accion_alta: str = ""
+    cve_alta: str = ""
+    fecha_ultimo: str = ""
+    accion_ultimo: str = ""
+    cve_ultimo: str = ""
+    fecha_cese: str = ""
+    cve_cese: str = ""
 
 
 @dataclass
@@ -750,6 +763,24 @@ def coherencia(
     return None
 
 
+def frase_fecha(accion: str, nombramiento: str, fecha_alta: str) -> str:
+    if accion == "reeleccion":
+        return (
+            "Esa publicación es una reelección, no un nombramiento nuevo: puede que ya estuviera en el órgano. "
+            "El extracto guarda el alta y la última fecha, no cada anuncio intermedio, y usa el día del boletín."
+        )
+    if fecha_alta and nombramiento != fecha_alta:
+        return (
+            f"Hay un alta anterior el {fecha_es(fecha_alta)} y esta es la posterior. "
+            "El extracto guarda esas dos fechas, no las intermedias. Un cese no cuenta como nombramiento. "
+            "La fecha es el día de publicación."
+        )
+    return (
+        "La fecha es el primer nombramiento de esa persona en la hoja. Un cese no cuenta como nombramiento. "
+        "No se guardan apoderados. La fecha es el día de publicación, no el de inscripción."
+    )
+
+
 def motivo_de(
     salida: Salida,
     tipo: str,
@@ -765,6 +796,8 @@ def motivo_de(
     confianza: float,
     lugares: int,
     confianza_empresa: str,
+    accion: str = "nombramiento",
+    fecha_alta: str = "",
 ) -> str:
     rol = ROL_LARGO.get(salida.rol, salida.rol)
     partido = f", candidatura {salida.partido}" if salida.partido else ""
@@ -785,11 +818,7 @@ def motivo_de(
             f"El BORME del {fecha_es(nombramiento)} publica a «{nombre_borme}» como administrador "
             f"o consejero de {empresa}."
         ),
-        (
-            "La fecha es la primera del extracto en la que ese nombre figura con un cargo de "
-            "administración en esa hoja. El extracto no separa nombramientos de ceses, no guarda "
-            "apoderados y usa el día de publicación, no el de inscripción."
-        ),
+        frase_fecha(accion, nombramiento, fecha_alta),
         cuando,
         (
             f"De {organismo} constan {euro(importe_mandato)} en subvenciones y contratos con fecha "
@@ -868,11 +897,59 @@ def table_columns(connection: sqlite3.Connection, name: str) -> set[str]:
     return {str(row[1]) for row in rows}
 
 
+def fechas_de(mencion: Mencion) -> list[tuple[str, str, str]]:
+    found: list[tuple[str, str, str]] = []
+    if mencion.fecha:
+        found.append((mencion.fecha, mencion.accion or "nombramiento", mencion.cve))
+    if mencion.fecha_ultimo and mencion.fecha_ultimo != mencion.fecha:
+        found.append((mencion.fecha_ultimo, mencion.accion_ultimo or "nombramiento", mencion.cve_ultimo))
+    return found
+
+
+def fundir(base: Mencion, extra: Mencion) -> None:
+    best: dict[str, tuple[str, str]] = {}
+    for fecha, accion, cve in fechas_de(base) + fechas_de(extra):
+        current = best.get(fecha)
+        if current is None or (accion == "nombramiento" and current[0] != "nombramiento"):
+            best[fecha] = (accion, cve)
+    ordered = sorted(best)
+    if not ordered:
+        return
+    first = ordered[0]
+    base.fecha = first
+    base.accion = best[first][0]
+    base.cve = best[first][1]
+    base.fecha_alta = first
+    base.accion_alta = best[first][0]
+    base.cve_alta = best[first][1]
+    if len(ordered) > 1:
+        last = ordered[-1]
+        base.fecha_ultimo = last
+        base.accion_ultimo = best[last][0]
+        base.cve_ultimo = best[last][1]
+    else:
+        base.fecha_ultimo = ""
+        base.accion_ultimo = ""
+        base.cve_ultimo = ""
+    if extra.fecha_cese and (not base.fecha_cese or extra.fecha_cese > base.fecha_cese):
+        base.fecha_cese = extra.fecha_cese
+        base.cve_cese = extra.cve_cese
+    if extra.confianza > base.confianza:
+        base.confianza = extra.confianza
+        base.modo = extra.modo
+        base.lugares = extra.lugares
+        base.nombre_borme = extra.nombre_borme or base.nombre_borme
+
+
 def record_mencion(
     store: dict[str, dict[str, Mencion]],
     toxic: set[str],
     mencion: Mencion,
 ) -> None:
+    if not mencion.fecha_alta:
+        mencion.fecha_alta = mencion.fecha
+        mencion.accion_alta = mencion.accion
+        mencion.cve_alta = mencion.cve
     if mencion.firma in toxic:
         return
     bucket = store.get(mencion.firma)
@@ -881,14 +958,141 @@ def record_mencion(
         return
     current = bucket.get(mencion.registro_key)
     if current is not None:
-        if mencion.fecha < current.fecha or (mencion.fecha == current.fecha and mencion.cve < current.cve):
-            bucket[mencion.registro_key] = mencion
+        fundir(current, mencion)
         return
     if len(bucket) >= MAX_EMPRESAS:
         toxic.add(mencion.firma)
         del store[mencion.firma]
         return
     bucket[mencion.registro_key] = mencion
+
+
+def cita_de(mencion: Mencion, salida: Salida) -> tuple[str, str, str, str] | None:
+    """Pick the appointment that best fits this seat.
+
+    A later date wins when the first one is before the person leaves office.
+    A dismissal is not a candidate. A nombramiento is preferred to a reelección
+    on the same side of the cese.
+    """
+    candidatas: list[tuple[str, str, str]] = []
+    if mencion.fecha_alta or mencion.fecha:
+        alta = mencion.fecha_alta or mencion.fecha
+        candidatas.append((alta, mencion.accion_alta or mencion.accion or "nombramiento", mencion.cve_alta or mencion.cve))
+    if mencion.fecha_ultimo and all(mencion.fecha_ultimo != item[0] for item in candidatas):
+        candidatas.append((mencion.fecha_ultimo, mencion.accion_ultimo or "nombramiento", mencion.cve_ultimo))
+    despues: list[tuple[str, str, str]] = []
+    durante: list[tuple[str, str, str]] = []
+    for fecha, accion, cve in candidatas:
+        kind = clasificar(fecha, salida)
+        if kind == "despues":
+            despues.append((fecha, accion, cve))
+            continue
+        if kind == "durante":
+            durante.append((fecha, accion, cve))
+    if despues:
+        despues.sort(key=lambda item: (item[1] != "nombramiento", item[0]))
+        fecha, accion, cve = despues[0]
+        return fecha, accion, cve, "despues"
+    if durante:
+        durante.sort(key=lambda item: (item[1] != "nombramiento", item[0]))
+        fecha, accion, cve = durante[0]
+        return fecha, accion, cve, "durante"
+    return None
+
+
+def leer_persona_cargo(
+    connection: sqlite3.Connection,
+    indice: IndiceNombres,
+    limit: int,
+) -> tuple[dict[str, dict[str, Mencion]], int, str, str]:
+    names = table_names(connection)
+    joins = ""
+    nombre_sql = "c.nombre_key"
+    empresa_sql = "''"
+    if "sociedad_persona" in names:
+        nombre_sql = "COALESCE(p.nombre, c.nombre_key)"
+        joins += (
+            " LEFT JOIN sociedad_persona p"
+            " ON p.registro_key = c.registro_key AND p.rol = c.rol AND p.nombre_key = c.nombre_key"
+        )
+    if "sociedad" in names:
+        empresa_sql = "COALESCE(s.nombre, '')"
+        joins += " LEFT JOIN sociedad s ON s.registro_key = c.registro_key"
+    query = f"""
+        SELECT c.registro_key, {nombre_sql}, {empresa_sql},
+               c.fecha_alta, c.accion_alta, c.cve_alta,
+               c.fecha_ultimo, c.accion_ultimo, c.cve_ultimo,
+               c.fecha_cese, c.cve_cese
+        FROM persona_cargo c
+        {joins}
+        WHERE c.rol = 'A' AND c.fecha_alta != ''
+    """
+    if limit > 0:
+        query = f"{query} LIMIT ?"
+        cursor = connection.execute(query, (limit,))
+    else:
+        cursor = connection.execute(query)
+    store: dict[str, dict[str, Mencion]] = {}
+    toxic: set[str] = set()
+    scanned = 0
+    first = ""
+    last = ""
+    for row in cursor:
+        scanned += 1
+        alta = text_of(row[3])
+        if ISO_RE.fullmatch(alta):
+            if not first or alta < first:
+                first = alta
+            if alta > last:
+                last = alta
+        sheet = text_of(row[0])
+        display = text_of(row[1])
+        if not sheet or not display:
+            continue
+        hits = indice.buscar(display)
+        if not hits:
+            continue
+        by_firma: dict[str, object] = {}
+        for hit in hits:
+            if hit.confianza < NAME_FLOOR:
+                continue
+            payload = hit.payload
+            if not isinstance(payload, Salida):
+                continue
+            current = by_firma.get(payload.firma)
+            if current is None or hit.confianza > current.confianza:
+                by_firma[payload.firma] = hit
+        for firma, hit in by_firma.items():
+            record_mencion(
+                store,
+                toxic,
+                Mencion(
+                    firma=firma,
+                    registro_key=sheet,
+                    fecha=alta,
+                    cve=text_of(row[5]),
+                    empresa=text_of(row[2]),
+                    nombre_borme=display,
+                    confianza=hit.confianza,
+                    lugares=hit.lugares,
+                    modo=hit.modo,
+                    accion=text_of(row[4]) or "nombramiento",
+                    fecha_alta=alta,
+                    accion_alta=text_of(row[4]) or "nombramiento",
+                    cve_alta=text_of(row[5]),
+                    fecha_ultimo=text_of(row[6]),
+                    accion_ultimo=text_of(row[7]),
+                    cve_ultimo=text_of(row[8]),
+                    fecha_cese=text_of(row[9]),
+                    cve_cese=text_of(row[10]),
+                ),
+            )
+        if scanned % 500_000 == 0:
+            kept = sum(len(bucket) for bucket in store.values())
+            log(f"Cargos {scanned}; menciones {kept}; RSS {rss_mb()} MB")
+    kept = sum(len(bucket) for bucket in store.values())
+    log(f"Cargos leídos {scanned}; menciones {kept}; nombres con demasiadas sociedades {len(toxic)}; RSS {rss_mb()} MB")
+    return store, scanned, first, last
 
 
 def scan_borme(
@@ -903,10 +1107,14 @@ def scan_borme(
         connection.execute("PRAGMA mmap_size = 0")
         connection.execute("PRAGMA temp_store = FILE")
         names = table_names(connection)
+        if "persona_cargo" in names:
+            return leer_persona_cargo(connection, indice, limit)
         if "acto" not in names:
             raise SystemExit(
-                "El extracto BORME no tiene la tabla acto. Si se compactó, las fechas de "
-                "nombramiento ya no están y este indicador no se puede calcular sin ese fichero."
+                "El extracto BORME no tiene persona_cargo ni acto, así que no hay fecha de nombramiento. "
+                "El compactado antiguo borró los anuncios. Con esta versión hay que volver a bajarlos y agregar: "
+                "python3 pipeline/borme.py fetch && python3 pipeline/borme.py aggregate --compact. "
+                "Un día ya marcado como hecho se salta si sus anuncios siguen en acto; si se compactaron, se vuelven a pedir."
             )
         store: dict[str, dict[str, Mencion]] = {}
         toxic: set[str] = set()
@@ -933,8 +1141,8 @@ def scan_borme(
             sheet = text_of(registro_key)
             if not sheet:
                 continue
-            for rol, display, _key, kind in decode_people(text_of(personas)):
-                if rol != "A" or kind != "P":
+            for rol, display, _key, kind, accion in decode_people(text_of(personas)):
+                if rol != "A" or kind != "P" or accion == "cese":
                     continue
                 hits = indice.buscar(display)
                 if not hits:
@@ -963,6 +1171,7 @@ def scan_borme(
                             confianza=hit.confianza,
                             lugares=hit.lugares,
                             modo=hit.modo,
+                            accion=accion or "nombramiento",
                         ),
                     )
             if scanned % 500_000 == 0:
@@ -1355,6 +1564,8 @@ def casos_de_par(
             empresa.capital,
             importe_total,
         )
+        if mencion.accion == "reeleccion":
+            score = round(max(0.0, score - 0.04), 4)
         if not publica(tipo, score, mandato, previo):
             continue
         label, norm = elegir_organismo(group)
@@ -1380,6 +1591,8 @@ def casos_de_par(
                     mencion.confianza,
                     mencion.lugares,
                     empresa.confianza,
+                    mencion.accion,
+                    mencion.fecha_alta or mencion.fecha,
                 ),
                 nif=empresa.nif,
                 beneficiario_id=empresa.beneficiario_id,
@@ -1440,10 +1653,31 @@ def construir_casos(
             if nif_publico(empresa.nif) or empresa_publica(empresa.nombre) or empresa_publica(mencion.empresa):
                 continue
             for salida in salidas_por_firma.get(mencion.firma, []):
-                kind = clasificar(mencion.fecha, salida)
-                if kind not in {"durante", "despues"}:
+                cita = cita_de(mencion, salida)
+                if cita is None:
                     continue
-                pending.append((salida, mencion, empresa, kind))
+                fecha, accion, cve, kind = cita
+                elegida = Mencion(
+                    firma=mencion.firma,
+                    registro_key=mencion.registro_key,
+                    fecha=fecha,
+                    cve=cve,
+                    empresa=mencion.empresa,
+                    nombre_borme=mencion.nombre_borme,
+                    confianza=mencion.confianza,
+                    lugares=mencion.lugares,
+                    modo=mencion.modo,
+                    accion=accion,
+                    fecha_alta=mencion.fecha_alta or mencion.fecha,
+                    accion_alta=mencion.accion_alta or mencion.accion,
+                    cve_alta=mencion.cve_alta or mencion.cve,
+                    fecha_ultimo=mencion.fecha_ultimo,
+                    accion_ultimo=mencion.accion_ultimo,
+                    cve_ultimo=mencion.cve_ultimo,
+                    fecha_cese=mencion.fecha_cese,
+                    cve_cese=mencion.cve_cese,
+                )
+                pending.append((salida, elegida, empresa, kind))
     log(f"Candidatos con fecha dentro de mandato o de la ventana de {WINDOW_YEARS} años: {len(pending)}")
     by_nif: dict[str, list[tuple[Salida, Mencion, Empresa, str]]] = {}
     for item in pending:
@@ -1942,6 +2176,9 @@ def self_check() -> None:
         assert by_nif["B12121212"][0].coherencia == "isla"
         assert "B13131313" not in by_nif
         assert "B14141414" in by_nif
+        reap = by_nif["B16161616"][0]
+        assert reap.tipo == "despues"
+        assert reap.nombramiento == "2020-09-01"
 
         connection = sqlite3.connect(bdns)
         stored = connection.execute("SELECT COUNT(*) FROM alert_puerta").fetchone()[0]
@@ -1972,6 +2209,29 @@ def self_check() -> None:
         assert caso.nif == "B20202020"
         assert "Hacienda" in caso.organismo
         assert caso.supuesto == "fecha_publicada"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        empty = Path(tmp) / "vacio.sqlite"
+        sqlite3.connect(empty).close()
+        try:
+            scan_borme(empty, IndiceNombres([]), 0)
+            raise AssertionError("un extracto sin fechas tenía que detenerse")
+        except SystemExit as exc:
+            assert "persona_cargo" in str(exc)
+        solo_acto = Path(tmp) / "acto.sqlite"
+        connection = sqlite3.connect(solo_acto)
+        connection.execute(
+            "CREATE TABLE acto (fecha TEXT, cve TEXT, nombre TEXT, registro_key TEXT, personas TEXT)"
+        )
+        connection.execute(
+            "INSERT INTO acto VALUES ('2020-02-01', 'BORME-A-2020-1-10', 'TALLER SL', 'H1', ?)",
+            (people_blob("QUIROGA BELMONTE ANA"),),
+        )
+        connection.commit()
+        connection.close()
+        store, scanned, _first, _last = scan_borme(solo_acto, IndiceNombres([(ana.persona, ana)]), 0)
+        assert scanned == 1
+        assert store[ana.firma]["H1"].fecha == "2020-02-01"
     print("Autocomprobación de puertas giratorias correcta.")
 
 
@@ -1992,18 +2252,42 @@ def write_estatal_fixture(politicos: Path, borme: Path, bdns: Path, boe: Path) -
 
     connection = sqlite3.connect(borme)
     connection.execute(
-        "CREATE TABLE acto (id INTEGER PRIMARY KEY, fecha TEXT, cve TEXT, nombre TEXT, registro_key TEXT, personas TEXT)"
+        """
+        CREATE TABLE persona_cargo (
+          registro_key TEXT NOT NULL,
+          nombre_key TEXT NOT NULL,
+          rol TEXT NOT NULL,
+          fecha_alta TEXT NOT NULL,
+          accion_alta TEXT NOT NULL,
+          cve_alta TEXT NOT NULL,
+          fecha_ultimo TEXT NOT NULL DEFAULT '',
+          accion_ultimo TEXT NOT NULL DEFAULT '',
+          cve_ultimo TEXT NOT NULL DEFAULT '',
+          fecha_cese TEXT NOT NULL DEFAULT '',
+          cve_cese TEXT NOT NULL DEFAULT '',
+          PRIMARY KEY (registro_key, rol, nombre_key)
+        )
+        """
     )
     connection.execute(
-        "INSERT INTO acto (fecha, cve, nombre, registro_key, personas) VALUES (?,?,?,?,?)",
-        (
-            "2020-06-01",
-            "BORME-A-2020-80-28",
-            "ESTUDIOS ZUGASTI LARRANAGA SL",
-            "ZUGASTI1",
-            people_blob("ZUGASTI LARRANAGA NEREA"),
-        ),
+        """
+        INSERT INTO persona_cargo (
+          registro_key, nombre_key, rol, fecha_alta, accion_alta, cve_alta
+        ) VALUES ('ZUGASTI1', 'ZUGASTI LARRANAGA NEREA', 'A', '2020-06-01', 'nombramiento', 'BORME-A-2020-80-28')
+        """
     )
+    connection.execute(
+        """
+        CREATE TABLE sociedad_persona (
+          registro_key TEXT, rol TEXT, nombre_key TEXT, nombre TEXT, kind TEXT
+        )
+        """
+    )
+    connection.execute(
+        "INSERT INTO sociedad_persona VALUES ('ZUGASTI1', 'A', 'ZUGASTI LARRANAGA NEREA', 'ZUGASTI LARRANAGA NEREA', 'P')"
+    )
+    connection.execute("CREATE TABLE sociedad (registro_key TEXT PRIMARY KEY, nombre TEXT, cierre TEXT NOT NULL DEFAULT '')")
+    connection.execute("INSERT INTO sociedad (registro_key, nombre) VALUES ('ZUGASTI1', 'ESTUDIOS ZUGASTI LARRANAGA SL')")
     connection.commit()
     connection.close()
 
@@ -2166,35 +2450,76 @@ def write_fixture(politicos: Path, borme: Path, bdns: Path) -> None:
     connection.commit()
     connection.close()
 
-    acts = [
-        ("2020-02-01", "BORME-A-2020-20-10", "TALLERES QUIROGA BELMONTE SL", "QUIROGA1", "QUIROGA BELMONTE ANA"),
-        ("2021-08-01", "BORME-A-2021-30-10", "TALLERES QUIROGA BELMONTE SL", "QUIROGA1", "QUIROGA BELMONTE ANA"),
-        ("2018-01-15", "BORME-A-2018-10-10", "SERVICIOS RURALES BELMONTE SL", "QUIROGA2", "QUIROGA BELMONTE ANA"),
-        ("2015-04-01", "BORME-A-2015-4-10", "CONSTRUCCIONES QUIROGA VIEJA SL", "QUIROGA3", "QUIROGA BELMONTE ANA"),
-        ("2020-04-01", "BORME-A-2020-40-10", "AGUAS MUNICIPALES DE ABERTURA SL", "QUIROGA4", "QUIROGA BELMONTE ANA"),
-        ("2020-05-01", "BORME-A-2020-50-10", "HORNOS DE ALCUESCAR SL", "QUIROGA5", "QUIROGA BELMONTE ANA"),
-        ("2023-07-01", "BORME-A-2023-70-10", "TARDIA QUIROGA SL", "QUIROGA6", "QUIROGA BELMONTE ANA"),
-        ("2020-06-01", "BORME-A-2020-60-10", "PANADERIA SALMERON SL", "BRUNO1", "SALMERON DELGADO BRUNO"),
-        ("2023-09-01", "BORME-A-2023-90-10", "HORNO NUEVO SALMERON SL", "BRUNO2", "SALMERON DELGADO BRUNO"),
-        ("2021-06-01", "BORME-A-2021-60-10", "CLINICA HONGOS YUNQUE SL", "CARLA1", "HONGOS YUNQUE CARLA"),
-        ("2020-03-01", "BORME-A-2020-31-10", "COMUN NAVARRO SL", "DIEGO1", "NAVARRO SANCHEZ DIEGO"),
-        ("2020-01-15", "BORME-A-2020-15-10", "ESTUDIOS RIPOLLES SL", "ELENA1", "RIPOLLES MONTSENY ELENA"),
-        ("2020-04-15", "BORME-A-2020-45-38", "CHARTER HEREDIA GOMERA SL", "FELIPE1", "HEREDIA GOMERA FELIPE"),
-        ("2020-02-02", "BORME-A-2020-22-10", "AMBIGUA QUIROGA SL", "AMB1", "QUIROGA BELMONTE ANA"),
-        ("2020-03-15", "BORME-A-2020-33-10", "EDITORIAL PUBLICACIONES BELMONTE SL", "PUB1", "QUIROGA BELMONTE ANA"),
+    # registro_key, nombre_key, nombre, empresa, alta, accion, cve, ultimo, accion_ultimo, cve_ultimo
+    cargos_fecha = [
+        ("QUIROGA1", "QUIROGA BELMONTE ANA", "QUIROGA BELMONTE ANA", "TALLERES QUIROGA BELMONTE SL", "2020-02-01", "nombramiento", "BORME-A-2020-20-10", "2021-08-01", "nombramiento", "BORME-A-2021-30-10"),
+        ("QUIROGA2", "QUIROGA BELMONTE ANA", "QUIROGA BELMONTE ANA", "SERVICIOS RURALES BELMONTE SL", "2018-01-15", "nombramiento", "BORME-A-2018-10-10", "", "", ""),
+        ("QUIROGA3", "QUIROGA BELMONTE ANA", "QUIROGA BELMONTE ANA", "CONSTRUCCIONES QUIROGA VIEJA SL", "2015-04-01", "nombramiento", "BORME-A-2015-4-10", "", "", ""),
+        ("QUIROGA4", "QUIROGA BELMONTE ANA", "QUIROGA BELMONTE ANA", "AGUAS MUNICIPALES DE ABERTURA SL", "2020-04-01", "nombramiento", "BORME-A-2020-40-10", "", "", ""),
+        ("QUIROGA5", "QUIROGA BELMONTE ANA", "QUIROGA BELMONTE ANA", "HORNOS DE ALCUESCAR SL", "2020-05-01", "nombramiento", "BORME-A-2020-50-10", "", "", ""),
+        ("QUIROGA6", "QUIROGA BELMONTE ANA", "QUIROGA BELMONTE ANA", "TARDIA QUIROGA SL", "2023-07-01", "nombramiento", "BORME-A-2023-70-10", "", "", ""),
+        ("QUIROGA7", "QUIROGA BELMONTE ANA", "QUIROGA BELMONTE ANA", "VUELTA QUIROGA BELMONTE SL", "2016-03-01", "nombramiento", "BORME-A-2016-3-10", "2020-09-01", "nombramiento", "BORME-A-2020-90-10"),
+        ("BRUNO1", "SALMERON DELGADO BRUNO", "SALMERON DELGADO BRUNO", "PANADERIA SALMERON SL", "2020-06-01", "nombramiento", "BORME-A-2020-60-10", "", "", ""),
+        ("BRUNO2", "SALMERON DELGADO BRUNO", "SALMERON DELGADO BRUNO", "HORNO NUEVO SALMERON SL", "2023-09-01", "nombramiento", "BORME-A-2023-90-10", "", "", ""),
+        ("CARLA1", "HONGOS YUNQUE CARLA", "HONGOS YUNQUE CARLA", "CLINICA HONGOS YUNQUE SL", "2021-06-01", "nombramiento", "BORME-A-2021-60-10", "", "", ""),
+        ("DIEGO1", "NAVARRO SANCHEZ DIEGO", "NAVARRO SANCHEZ DIEGO", "COMUN NAVARRO SL", "2020-03-01", "nombramiento", "BORME-A-2020-31-10", "", "", ""),
+        ("ELENA1", "RIPOLLES MONTSENY ELENA", "RIPOLLES MONTSENY ELENA", "ESTUDIOS RIPOLLES SL", "2020-01-15", "nombramiento", "BORME-A-2020-15-10", "", "", ""),
+        ("FELIPE1", "HEREDIA GOMERA FELIPE", "HEREDIA GOMERA FELIPE", "CHARTER HEREDIA GOMERA SL", "2020-04-15", "nombramiento", "BORME-A-2020-45-38", "", "", ""),
+        ("AMB1", "QUIROGA BELMONTE ANA", "QUIROGA BELMONTE ANA", "AMBIGUA QUIROGA SL", "2020-02-02", "nombramiento", "BORME-A-2020-22-10", "", "", ""),
+        ("PUB1", "QUIROGA BELMONTE ANA", "QUIROGA BELMONTE ANA", "EDITORIAL PUBLICACIONES BELMONTE SL", "2020-03-15", "nombramiento", "BORME-A-2020-33-10", "", "", ""),
     ]
     connection = sqlite3.connect(borme)
     connection.execute(
         """
-        CREATE TABLE acto (
-          id INTEGER PRIMARY KEY,
-          fecha TEXT, cve TEXT, nombre TEXT, registro_key TEXT, personas TEXT
+        CREATE TABLE persona_cargo (
+          registro_key TEXT NOT NULL,
+          nombre_key TEXT NOT NULL,
+          rol TEXT NOT NULL,
+          fecha_alta TEXT NOT NULL,
+          accion_alta TEXT NOT NULL,
+          cve_alta TEXT NOT NULL,
+          fecha_ultimo TEXT NOT NULL DEFAULT '',
+          accion_ultimo TEXT NOT NULL DEFAULT '',
+          cve_ultimo TEXT NOT NULL DEFAULT '',
+          fecha_cese TEXT NOT NULL DEFAULT '',
+          cve_cese TEXT NOT NULL DEFAULT '',
+          PRIMARY KEY (registro_key, rol, nombre_key)
         )
         """
     )
+    connection.execute(
+        """
+        CREATE TABLE sociedad_persona (
+          registro_key TEXT NOT NULL,
+          rol TEXT NOT NULL,
+          nombre_key TEXT NOT NULL,
+          nombre TEXT NOT NULL,
+          kind TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        "CREATE TABLE sociedad (registro_key TEXT PRIMARY KEY, nombre TEXT, cierre TEXT NOT NULL DEFAULT '')"
+    )
     connection.executemany(
-        "INSERT INTO acto (fecha, cve, nombre, registro_key, personas) VALUES (?,?,?,?,?)",
-        [(fecha, cve, nombre, key, people_blob(person)) for fecha, cve, nombre, key, person in acts],
+        """
+        INSERT INTO persona_cargo (
+          registro_key, nombre_key, rol, fecha_alta, accion_alta, cve_alta,
+          fecha_ultimo, accion_ultimo, cve_ultimo
+        ) VALUES (?, ?, 'A', ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (key, nombre_key, alta, accion, cve, ultimo, accion_ultimo, cve_ultimo)
+            for key, nombre_key, _nombre, _empresa, alta, accion, cve, ultimo, accion_ultimo, cve_ultimo in cargos_fecha
+        ],
+    )
+    connection.executemany(
+        "INSERT INTO sociedad_persona (registro_key, rol, nombre_key, nombre, kind) VALUES (?, 'A', ?, ?, 'P')",
+        [(key, nombre_key, nombre) for key, nombre_key, nombre, _empresa, *_rest in cargos_fecha],
+    )
+    connection.executemany(
+        "INSERT INTO sociedad (registro_key, nombre) VALUES (?, ?)",
+        [(key, empresa) for key, _nombre_key, _nombre, empresa, *_rest in cargos_fecha],
     )
     connection.commit()
     connection.close()
@@ -2214,6 +2539,7 @@ def write_fixture(politicos: Path, borme: Path, bdns: Path) -> None:
         ("FELIPE1", "B12121212", 12, "CHARTER HEREDIA GOMERA SL", "alta", 15000),
         ("AMB1", "B13131313", 13, "AMBIGUA QUIROGA SL", "ambigua", 3000),
         ("PUB1", "B14141414", 14, "EDITORIAL PUBLICACIONES BELMONTE SL", "alta", 4000),
+        ("QUIROGA7", "B16161616", 16, "VUELTA QUIROGA BELMONTE SL", "alta", 3000),
     ]
     grants = [
         (1, "B11111111", "2018-05-01", 25000, "Ayuntamiento de Abertura", "Extremadura", "Ayuda al taller"),
@@ -2231,6 +2557,7 @@ def write_fixture(politicos: Path, borme: Path, bdns: Path) -> None:
         (13, "B12121212", "2018-07-01", 35000, "Cabildo Insular de Tenerife", "Canarias", "Charter"),
         (14, "B13131313", "2018-05-01", 50000, "Ayuntamiento de Abertura", "Extremadura", "Ambigua"),
         (15, "B14141414", "2018-10-01", 12000, "Ayuntamiento de Abertura", "Extremadura", "Editorial"),
+        (16, "B16161616", "2018-04-01", 15000, "Ayuntamiento de Abertura", "Extremadura", "Segunda alta"),
     ]
     connection = sqlite3.connect(bdns)
     connection.execute(
