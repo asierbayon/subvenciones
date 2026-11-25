@@ -8,6 +8,7 @@ import { listContratos } from "@/lib/contratos";
 import { formatNumber } from "@/lib/format";
 
 const tipos = [
+  { value: "menor_umbral", label: "Menores bajo el umbral" },
   { value: "menor", label: "Contrato menor" },
   { value: "sin_concurrencia", label: "Sin convocatoria abierta" },
   { value: "mismo_organo", label: "Mismo órgano" },
@@ -52,7 +53,9 @@ const ContratosAlertPage = async ({ searchParams }: { searchParams: Promise<Aler
         <p>
           El mismo NIF recibe una concesión y, a menos de 180 días, se adjudica un contrato del mismo órgano o de una
           unidad de su jerarquía. Si el contrato es menor o no salió a convocatoria abierta, también se señala cuando
-          solo coincide la administración.
+          solo coincide la administración. Aparte, se agrupan los contratos menores del mismo órgano y del mismo
+          adjudicatario que se repiten en la banda del 90 % al 100 % del tope (40.000 € sin IVA en obras, 15.000 € sin
+          IVA en servicios y suministros), sobre todo cuando el importe es idéntico.
         </p>
       </PageIntro>
       <AlertBanner>

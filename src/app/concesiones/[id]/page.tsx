@@ -57,6 +57,16 @@ const ConcesionPage = async ({ params }: { params: Promise<Params> }) => {
           convocatoria, no a cada pago.
         </p>
       </PageIntro>
+      {row.esDuplicado ? (
+        <p className="mb-4 text-sm leading-relaxed text-terra">
+          Esta fila repite otra concesión con el mismo beneficiario, la misma convocatoria, la misma fecha, el mismo
+          importe y el mismo instrumento. Los totales y las alertas cuentan solo{" "}
+          <Link href={`/concesiones/${row.canonId ?? row.id}`} className="xp-link">
+            la primera
+          </Link>
+          .
+        </p>
+      ) : null}
       <div className="mb-4 flex flex-wrap gap-2">
         <Badge tone="accent">{row.instrumento}</Badge>
         <Badge>{row.tipoBeneficiario}</Badge>

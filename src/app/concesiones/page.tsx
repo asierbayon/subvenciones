@@ -37,9 +37,12 @@ const columns: Column<Concesion>[] = [
     sortKey: "importe",
     align: "right",
     cell: (row) => (
-      <Link href={`/concesiones/${row.id}`} className="xp-link tabular-nums">
-        {formatEuro(row.importe)}
-      </Link>
+      <span className="inline-flex flex-col items-end gap-1">
+        <Link href={`/concesiones/${row.id}`} className="xp-link tabular-nums">
+          {formatEuro(row.importe)}
+        </Link>
+        {row.esDuplicado ? <Badge>Repetida, no suma</Badge> : null}
+      </span>
     ),
   },
   {

@@ -16,10 +16,13 @@ import {
 } from "@/lib/registro";
 
 const SociedadesPage = async ({ searchParams }: { searchParams: Promise<AlertSearch> }) => {
-  const filters = parseAlertFilters(await searchParams);
+  const raw = await searchParams;
+  const filters = parseAlertFilters(raw);
+  const vehiculos = raw.vehiculos;
+  const includeVehicles = vehiculos === "1" || (Array.isArray(vehiculos) && vehiculos[0] === "1");
   const loaded = await guard(async () => {
     try {
-      return await listSociedades(filters);
+      return await listSociedades(filters, includeVehicles);
     } catch (error) {
       if (error instanceof DatabaseMissingError) {
         throw error;
@@ -51,7 +54,9 @@ const SociedadesPage = async ({ searchParams }: { searchParams: Promise<AlertSea
         <p>
           Cruza las sociedades del volcado con los anuncios del BORME de 2016 a 2023. Marca una subvención dineraria
           de al menos 10.000 € cuando la sociedad se constituye poco antes, con un capital de hasta 3.100 €, cuando se
-          disuelve o se extingue poco después, o cuando la ayuda es al menos diez veces ese capital.
+          disuelve o se extingue poco después, o cuando la ayuda es al menos diez veces ese capital. En las convocatorias
+          de IDAE y de incentivos regionales un capital mínimo es el vehículo del proyecto: esa señal no sale aquí
+          salvo que se acumule otra (cierre u administrador compartido). El filtro de vehículos de proyecto la muestra.
         </p>
       </PageIntro>
       <AlertBanner>
@@ -59,6 +64,13 @@ const SociedadesPage = async ({ searchParams }: { searchParams: Promise<AlertSea
         empresa pequeña perfectamente regular. El BORME no publica el NIF de forma sistemática: el cruce es por el
         nombre normalizado y se muestra la confianza.
       </AlertBanner>
+      {includeVehicles ? null : (
+        <p className="mb-4 text-sm">
+          <Link href="/alertas/sociedades?vehiculos=1" className="xp-link">
+            Ver también los vehículos de proyecto de IDAE e incentivos regionales
+          </Link>
+        </p>
+      )}
       <AlertFilterForm
         action="/alertas/sociedades"
         filters={filters}

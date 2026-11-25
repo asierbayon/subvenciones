@@ -16,11 +16,13 @@ const shell = (filters: AlertFilters, ccaa: string[], organismos: string[], tota
   <>
     <PageIntro eyebrow="Estadística" title="Cifras que no se parecen al resto">
       <p>
-        Benford mira el primer dígito del importe. La desviación media absoluta (MAD) por encima de 0,015 es el corte
-        de Nigrini para una serie que no se ajusta; hace falta al menos 200 concesiones y que el mayor importe sea cien
-        veces el menor. Un importe redondo es múltiplo de 1.000 €, y solo se marca si esa cuota supera en 20 puntos la
-        del conjunto del volcado. Un atípico está a 3,5 desviaciones del logaritmo del importe, dentro de su organismo
-        y de su tipo de beneficiario, en grupos de al menos 40 concesiones.
+        La lista abre por los atípicos. Benford mira el primer dígito, pero el corte suelto de Nigrini (MAD 0,015)
+        marca a la mayoría de los organismos, así que aquí solo se publica si la MAD pasa de 0,030 y hay al menos 500
+        subvenciones, con el mayor importe cien veces el menor. Un importe redondo es múltiplo de 1.000 €, y solo se
+        marca si esa cuota supera en 20 puntos la del conjunto del volcado. Un atípico está a 3,5 desviaciones del
+        logaritmo del importe, dentro de su organismo
+        y de su tipo de beneficiario, en grupos de al menos 40 concesiones. No entran los NIF de administraciones,
+        congregaciones ni fundaciones (P, Q, S, R, G).
       </p>
     </PageIntro>
     <AlertBanner>
@@ -42,7 +44,7 @@ const shell = (filters: AlertFilters, ccaa: string[], organismos: string[], tota
 
 const EstadisticaPage = async ({ searchParams }: { searchParams: Promise<AlertSearch> }) => {
   const filters = parseAlertFilters(await searchParams);
-  const kind = filters.tipo || "benford";
+  const kind = filters.tipo || "atipico";
   const active = { ...filters, tipo: kind };
   const loaded = await guard(async () => {
     try {

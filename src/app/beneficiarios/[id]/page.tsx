@@ -192,7 +192,11 @@ const BeneficiarioPage = async ({
     <>
       <PageIntro eyebrow={row.nif || "Sin NIF"} title={row.nombre}>
         <p>
-          {formatNumber(row.nConcesiones)} concesiones y {formatEuro(row.importeTotal)} acumulados en este volcado.
+          {formatNumber(row.nSubvencion)} subvenciones dinerarias y {formatEuro(row.importeSubvencion)} acumulados en
+          este volcado.
+          {row.nGarantia > 0
+            ? ` Aparte, ${formatNumber(row.nGarantia)} garantías por ${formatEuro(row.importeGarantia)}, que no son una entrega de dinero.`
+            : ""}{" "}
           El tipo sale de la letra del NIF.
         </p>
       </PageIntro>
@@ -201,8 +205,9 @@ const BeneficiarioPage = async ({
       </div>
       <dl className="grid gap-3 sm:grid-cols-3">
         <Fact label="NIF" value={row.nif || "—"} />
-        <Fact label="Concesiones" value={formatNumber(row.nConcesiones)} />
-        <Fact label="Importe" value={formatEuro(row.importeTotal)} />
+        <Fact label="Subvenciones" value={formatNumber(row.nSubvencion)} />
+        <Fact label="Importe subvenciones" value={formatEuro(row.importeSubvencion)} />
+        {row.nGarantia > 0 ? <Fact label="Garantías" value={`${formatNumber(row.nGarantia)} · ${formatEuro(row.importeGarantia)}`} /> : null}
       </dl>
       <RegistroMercantil beneficiarioId={row.id} nif={row.nif} />
       <VinculoBlock rows={loaded.vinculos} />

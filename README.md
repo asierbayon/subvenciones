@@ -91,6 +91,22 @@ El script enriquece tres campos que el CSV no trae, y la interfaz los marca como
 - Cerca del 1,4 % de las convocatorias queda en «No determinada»: homónimos (Torrent está en Girona y en Valencia) y nombres que el padrón no resuelve. Los bilingües con barra (`ELCHE/ELX`, `ALCOY/ALCOI`) sí se asignan.
 - Los importes de garantías y préstamos no son una entrega de dinero. El panel abre en «Solo subvenciones» y permite sumar todos los instrumentos.
 - El beneficiario se agrupa por NIF. Sin NIF, por el nombre normalizado.
+
+Las filas idénticas en beneficiario, convocatoria, fecha, importe e instrumento se conservan en la tabla, pero los totales, el panel y las alertas cuentan una sola: la de identificador más bajo. El resto queda marcado en `concesion_dup`. Sobre un índice ya construido, sin volver a bajar los CSV:
+
+```bash
+python3 pipeline/build_index.py --dedupe
+```
+
+Añade la tabla `concesion_dup` y sustituye la vista `concesiones`. No migra el resto del esquema. En un índice de este tamaño son unos minutos; el agrupado va a disco (`temp_store=FILE`) para caber en poca RAM. Después hay que rehacer los indicadores que lean importes, porque los que ya estaban calculados sumaron las copias.
+
+Las garantías y los avales (instrumento Garantía: ICO, CERSA y el resto) no entran en el importe de subvención. El panel tiene una pestaña propia. En la ficha del beneficiario y de la convocatoria el importe de subvención y el de garantía se muestran aparte. Los indicadores de contratos suman solo subvenciones dinerarias y, si en la ventana también hay garantías, lo dicen en el texto sin mezclarlas. Sobre un índice ya construido:
+
+```bash
+python3 pipeline/build_index.py --totals
+```
+
+Añade columnas (`importe_subvencion`, `importe_garantia` y los recuentos) si faltan y rellena el panel. No vuelve a leer los CSV.
 - La foto termina en 2022. Volver a lanzar el pipeline vuelve a bajar los mismos ficheros mientras el repositorio archivado no cambie. La BDNS oficial, desde la renovación del portal, ya ofrece descarga; este proyecto no la mezcla con el volcado de Obregón.
 
 ## Alertas
@@ -101,25 +117,27 @@ Los indicadores se calculan encima del índice, sin volver a leer los CSV:
 python3 pipeline/alerts.py fraccionamiento
 ```
 
-Son señales para revisar expedientes, no pruebas de un incumplimiento. El fraccionamiento exige el mismo NIF privado y el mismo organismo, convocatorias distintas, importes no idénticos, y una mediana por encima del percentil 75 de lo que ese organismo concede a entidades privadas. La banda es el 90–100 % de 15.000 €, 40.000 € o 200.000 € en 90 días. La regla de suma exige piezas de al menos 50.000 € que juntas queden entre 190.000 € y 200.000 €. Si el mismo organismo repite el patrón con más de tres NIF en el mismo mes, se trata como un programa y se descarta. Esos umbrales son el contrato menor de servicios de la LCSP, el de obras, y el de minimis del Reglamento (UE) 1407/2013. No son topes de la Ley General de Subvenciones. Quedan fuera los pagos de una sola convocatoria, los NIF de administraciones (P, Q, S), las universidades y los bloques de más de cuatro concesiones. La lista se ordena por una puntuación de cercanía al umbral, número de convocatorias y rareza para ese organismo.
+Son señales para revisar expedientes, no pruebas de un incumplimiento. El fraccionamiento exige el mismo NIF privado y el mismo organismo, la misma convocatoria, importes no idénticos, y una mediana por encima del percentil 75 de lo que ese organismo concede a entidades privadas. La banda es el 90–100 % de 200.000 € en 90 días. La regla de suma exige piezas de al menos 50.000 €, de esa misma convocatoria, que juntas queden entre 190.000 € y 200.000 €. Si el mismo organismo repite el patrón con más de tres NIF en el mismo mes, se trata como un programa y se descarta. El único umbral es el de minimis del Reglamento (UE) 1407/2013. Los 15.000 € y 40.000 € del contrato menor no se aplican a una subvención y no se usan. Quedan fuera los pagos de convocatorias distintas, los NIF P, Q, S y R, las fundaciones y asociaciones (G), las universidades y los bloques de más de cuatro concesiones. La lista se ordena por una puntuación de cercanía al de minimis, número de piezas y rareza para ese organismo.
+
+Benford, los múltiplos de mil y los atípicos tampoco cuentan esos NIF: una administración o una fundación no debe deformar la serie ni salir ella misma como atípico.
 
 ```bash
 python3 pipeline/alerts.py concentracion
 ```
 
-La concentración usa solo subvenciones dinerarias. El HHI es la suma de los cuadrados de la cuota de cada beneficiario. Se marca un organismo con al menos 20 concesiones y 4 beneficiarios si el HHI llega a 0,25 o si el mayor perceptor se lleva la mitad o más. 0,25 es la escala que el Departamento de Justicia de EE. UU. llama «muy concentrado» en un mercado; aquí es una regla de lectura, no una infracción. Los ganadores recurrentes que se listan son entidades privadas, no universidades, con al menos cuatro años y un millón de euros acumulados. El resto de repeticiones anuales queda fuera de la lista.
+La concentración usa solo subvenciones dinerarias. El HHI es la suma de los cuadrados de la cuota de cada beneficiario. Se marca un organismo con al menos 20 concesiones y 4 beneficiarios si el HHI llega a 0,25 o si el mayor perceptor se lleva la mitad o más. 0,25 es la escala que el Departamento de Justicia de EE. UU. llama «muy concentrado» en un mercado; aquí es una regla de lectura, no una infracción. Los ganadores recurrentes que se guardan son entidades privadas, no universidades, con al menos cuatro años y un millón de euros acumulados. No salen en la lista hasta que se pide `?repeticion=1`. El resto de repeticiones anuales no se guarda.
 
 ```bash
 python3 pipeline/alerts.py calendario
 ```
 
-El calendario compara, para cada organismo, los 45 días previos a una elección con los 45 anteriores; diciembre con la media del resto de ese año; y los 45 días posteriores a un cambio de gobierno (2 jun 2018 y 8 ene 2020) con los 45 previos. Las elecciones autonómicas solo se miran en su comunidad; las generales, en todas. El relevo de beneficiarios es un índice de Jaccard inferior a 0,30 entre dos años seguidos, con al menos 15 perceptores en cada uno.
+El calendario compara, para cada organismo, los 45 días previos a una elección con los 45 anteriores; y los 45 días posteriores a un cambio de gobierno (2 jun 2018 y 8 ene 2020) con los 45 previos. Las elecciones autonómicas solo se miran en su comunidad; las generales, en todas. El relevo de beneficiarios es un índice de Jaccard inferior a 0,30 entre dos años seguidos, con al menos 15 perceptores en cada uno. Diciembre solo se guarda si triplica la media del resto del año, y no sale en la lista salvo que se filtre ese tipo: es el cierre presupuestario.
 
 ```bash
 python3 pipeline/alerts.py estadistica
 ```
 
-Benford usa la desviación media absoluta de Nigrini: por encima de 0,015, con al menos 200 subvenciones y un rango de importes de al menos cien veces. Los múltiplos de 1.000 € se marcan solo si superan en 20 puntos la cuota global del volcado (en este extracto, cerca del 19 % de las subvenciones de 1.000 € o más). Un atípico está a 3,5 desviaciones del logaritmo del importe respecto de las demás subvenciones del mismo organismo y del mismo tipo de beneficiario.
+Benford usa la desviación media absoluta de Nigrini. El corte de 0,015 marca a la mayoría de los organismos, así que la alerta publicada exige MAD por encima de 0,030, al menos 500 subvenciones y un rango de importes de al menos cien veces. La pantalla de estadística abre por los atípicos. Los múltiplos de 1.000 € se marcan solo si superan en 20 puntos la cuota global del volcado (en este extracto, cerca del 19 % de las subvenciones de 1.000 € o más). Un atípico está a 3,5 desviaciones del logaritmo del importe respecto de las demás subvenciones del mismo organismo y del mismo tipo de beneficiario.
 
 ```bash
 python3 pipeline/alerts.py directa
@@ -150,7 +168,7 @@ Reglas, todas sobre subvenciones dinerarias:
 
 - **nueva_capital.** Constitución como mucho 365 días antes de una ayuda de al menos 10.000 €, y capital publicado de hasta 3.100 € (el mínimo legal de 3.000 y los redondeos que salen en el boletín).
 - **nueva_disuelta.** Constitución en esos 365 días, una ayuda de al menos 10.000 €, y disolución, extinción o cierre provisional en los 730 días posteriores a esa ayuda.
-- **importe_capital.** Capital de hasta 3.100 € y una ayuda de al menos 10.000 € y de al menos diez veces ese capital.
+- **importe_capital.** Capital de hasta 3.100 € y una ayuda de al menos 10.000 € y de al menos diez veces ese capital. Si la convocatoria es de IDAE o de incentivos regionales, el peso baja a 0,25 y no sale en la lista por defecto: es el vehículo de un proyecto. Recupera el peso si además hay cierre, o un administrador compartido. `?vehiculos=1` las muestra. Lo mismo vale para **nueva_capital** en esas convocatorias.
 - **disuelta_pronto.** Disolución o extinción en los 540 días posteriores a una ayuda de al menos 10.000 €.
 - **administrador / socio / domicilio.** Dos o más NIF distintos cobran del mismo organismo y publican la misma persona o el mismo domicilio.
 
@@ -193,7 +211,15 @@ Ejemplos reales del pase:
 - CAMPO ABADIA SL (B42819029) se constituye el 1 feb 2021, cobra del instituto de competitividad de Castilla y León y se extingue el 12 ene 2023 (`BORME-A-2023-8-37`).
 - Doce sociedades distintas cobran de la Consejería de Economía de Madrid y el BORME nombra administrador a GRUPO LARRUMBA HOLDING SL.
 
-Límites que el indicador no resuelve: una extinción puede ser una fusión (el anuncio dice «Disolución. Fusión. Extinción» y aquí cuenta como cierre); el capital de 1 € puede ser una limitada en formación sucesiva, que es legal; el administrador se publica sin DNI, así que un homónimo basta para enlazar dos sociedades; el domicilio de una gestoría concentra empresas que no forman un grupo.
+La causa del cierre se lee del texto del anuncio y se guarda en `acto.cierre` y `sociedad.cierre` (`fusion`, `escision`, `voluntaria`, `concurso`, `extincion`, `provisional`, `disolucion`). Una disolución por fusión, absorción o escisión no entra en `disuelta_pronto` ni en `nueva_disuelta`: no es una sociedad que cierra después de cobrar. El texto del indicador distingue disolución voluntaria, concurso y extinción. Rehacer solo ese indicador, sin volver a bajar el BORME y sin rehacer el cruce de nombres:
+
+```bash
+python3 pipeline/borme.py alerts
+```
+
+Si el extracto se agregó antes de guardar `cierre`, la columna queda vacía y el indicador no puede separar una fusión. En ese caso hace falta `python3 pipeline/borme.py aggregate` mientras la tabla `acto` siga en `data/borme/borme.sqlite` (no si `run` ya la compactó y tiró los anuncios). Agregar no descarga: relee los actos. Después, `alerts`.
+
+Límites que el indicador no resuelve: el capital de 1 € puede ser una limitada en formación sucesiva, que es legal; el administrador se publica sin DNI, así que un homónimo basta para enlazar dos sociedades; el domicilio de una gestoría concentra empresas que no forman un grupo. Un extracto compactado antes de este cambio no conserva la frase del anuncio, así que no se puede reclasificar sin volver a leer esos documentos.
 
 ```bash
 python3 pipeline/contratos.py
@@ -217,11 +243,17 @@ El indicador salta, dentro de 180 días, en este orden:
 
 1. **Mismo órgano.** El nombre normalizado coincide, o los dos lados comparten un DIR3 único, o los dos son el mismo ayuntamiento, diputación o cabildo aunque uno diga «junta de gobierno».
 2. **Misma jerarquía.** El organismo de la ayuda es una unidad superior en el anuncio, o los dos títulos son el mismo ministerio o la misma consejería tras unificar renombres de 2018-2022 (Hacienda y Función Pública con Hacienda, por ejemplo).
-3. **Misma administración.** Solo si el contrato es menor, negociado sin publicidad (código 3 del listado 2.07; el 4 es con publicidad), tramitación de emergencia o encargo formalizado. Aquí entran dos consejerías distintas de la misma comunidad, no todo el Estado con todo el Estado: «Administración General del Estado» se trata como un cajón, no como un órgano.
+3. **Misma administración.** Solo si el NIF del adjudicatario es de sociedad (A o B) y el contrato es menor, negociado sin publicidad (código 3 del listado 2.07; el 4 es con publicidad), tramitación de emergencia o encargo formalizado. Un NIF Q, P, S o G no entra por esta regla. Aquí entran dos consejerías distintas de la misma comunidad, no todo el Estado con todo el Estado: «Administración General del Estado» se trata como un cajón, no como un órgano. `python3 pipeline/contratos.py --alerts-only` rehace esta criba y el resto de indicadores de contratos sin volver a bajar los ZIP.
 
 Un padre de una sola palabra («Toledo», «Murcia») no se toma como órgano: en la jerarquía es la provincia, y casaría con todos los municipios. Valencia y Valencia de Don Juan tampoco se mezclan, porque el topónimo se compara entero.
 
-La pantalla lo etiqueta como indicador. Cada ficha dice qué regla ha saltado, enlaza las concesiones y el anuncio de la PLACSP, y se puede filtrar por territorio, año de adjudicación y organismo. No están los contratos menores de las plataformas autonómicas: el canal agregado los excluye y el de menores solo cubre perfiles alojados en la PLACSP.
+La pantalla lo etiqueta como indicador. Cada ficha dice qué regla ha saltado, enlaza las concesiones y el anuncio de la PLACSP, y se puede filtrar por territorio, año de adjudicación y organismo.
+
+Hay un segundo indicador, `menor_umbral`, que no cruza con una subvención. Agrupa contratos menores del mismo órgano de contratación y del mismo adjudicatario cuyo importe sin IVA cae en el 90–100 % del tope del contrato menor: 40.000 € en obras y 15.000 € en servicios o suministros. Hace falta al menos cinco anuncios en esa banda. La puntuación sube con el número, con la cuota de un importe idéntico (por ejemplo 295 menores a 39.669,42 €) y con la cercanía al tope. Se guarda en `alert_contrato` con nivel `menor_umbral` y una muestra de anuncios en `alert_contrato_pieza`. No vuelve a descargar la PLACSP:
+
+```bash
+python3 pipeline/contratos.py --menor-umbral
+``` No están los contratos menores de las plataformas autonómicas: el canal agregado los excluye y el de menores solo cubre perfiles alojados en la PLACSP.
 
 Sobre este índice (concesiones a personas jurídicas, 2018–marzo de 2022) la pasada leyó 3.986.699 anuncios y guardó 1.202.741 adjudicaciones de 94.653 NIF, el 10,6 % de los 894.548 beneficiarios con NIF. De 2.324 organismos que conceden a alguien con NIF, 677 (29,1 %) tienen el mismo nombre normalizado que un órgano de la PLACSP y 211 (9,1 %) apuntan a un único DIR3; 14 nombres son ambiguos. Salen 31.995 indicadores: 7.386 del mismo órgano, 1.060 de la jerarquía y 23.549 de la misma administración (estos solo si el contrato es menor o no salió a convocatoria abierta). 27.711 son contratos menores.
 
@@ -240,6 +272,8 @@ python3 pipeline/vinculos.py --self-check
 ```
 
 Solo se publica una coincidencia si la confianza llega a 0,85. Hace falta el nombre y los dos apellidos (o un solo apellido largo y poco común), que el nombre no esté en tres o más órganos, que la subvención caiga dentro del mandato y del cargo societario, y que el órgano que concede sea el del cargo: el municipio del concejal o del alcalde, el cabildo del consejero insular, el parlamento del diputado autonómico, o el departamento del alto cargo. Un apoderado baja la nota. Si el nombramiento societario no trae fechas, también. Por debajo del umbral no se guarda la fila.
+
+Quedan fuera las sociedades públicas, municipales o mixtas en las que el concejal está por razón del cargo. Se descarta el NIF si empieza por P, Q, S o R; si el socio único inscrito en el BORME es una administración; o si el NIF es A o B y el nombre lleva MUNICIPAL, PÚBLICA, SOCIEDAD MIXTA, EMPRESA MUNICIPAL, PATRONATO, AYUNTAMIENTO, DIPUTACIÓN o el nombre del municipio del cargo junto a una actividad típica de empresa municipal (deporte, turismo, cultura, vivienda, puerto, club de campo). Así salen «Pública de Desarrollo Municipal de Altea», «Logroño Deporte», «Club de Campo Villa de Madrid», «Cartagena Puerto de Culturas» o «Turismo de Valladolid». Volver a lanzar `python3 pipeline/vinculos.py` rehace solo este indicador: no descarga el censo de cargos ni el BORME.
 
 En la ingesta de noviembre de 2026 la tabla `politico` quedó en unas 152.000 filas, unos 63 MB:
 
@@ -293,6 +327,55 @@ python3 pipeline/vinculos.py
 
 `pnpm alerts` solo lanza el fraccionamiento. `pnpm contratos`, `pnpm borme`, `pnpm politicos` y `pnpm vinculos` equivalen a los comandos de Python correspondientes. El orden es el de arriba: cada paso lee el índice que escribió el anterior.
 
+## Rehacer indicadores en un índice que ya existe
+
+En el servidor (`/opt/faro-new`, base `data/bdns.sqlite`, BORME en `data/borme`, CSV en `data/raw`) no hace falta volver a bajar nada ni reconstruir el índice. Desde esa raíz, en este orden. Los tiempos son una orientación para el volcado completo en una máquina de 2 GB: el agrupado va a disco.
+
+```bash
+cd /opt/faro-new
+
+# 1. Menores repetidos bajo el umbral. Lee placsp_contrato. No baja ZIP.
+#    Unos minutos. No cambia el esquema de las concesiones; añade columnas a alert_contrato si faltan
+#    y la tabla alert_contrato_pieza.
+python3 pipeline/contratos.py --menor-umbral
+
+# 2. Vínculos políticos, sin las empresas municipales. Lee politico y borme_admins.
+#    Minutos. No migra esquema.
+python3 pipeline/vinculos.py
+
+# 3. Causa del cierre en el BORME y el indicador de sociedad.
+#    aggregate relee data/borme (sin red) si la tabla acto sigue ahí, y rellena sociedad.cierre.
+#    Si run ya borró acto, aggregate no puede recuperar la frase: alerts deja cierre vacío
+#    y no descarta las fusiones. alerts rehace solo alert_borme_sociedad.
+#    aggregate: del orden de una hora si hay millones de actos. alerts: unos minutos.
+#    Esquema: columna cierre en acto, sociedad y borme_empresa (ALTER o tabla nueva al agregar).
+python3 pipeline/borme.py aggregate
+python3 pipeline/borme.py alerts
+
+# 4. Una sola fila por concesión idéntica. No relee los CSV.
+#    Unos minutos. Crea concesion_dup y sustituye la vista concesiones. No reescribe la tabla de concesiones.
+python3 pipeline/build_index.py --dedupe
+
+# 5. Separa garantías y subvenciones en los totales del panel y de las fichas.
+#    Unos minutos. ALTER de columnas en beneficiario y convocatoria, y ámbito garantia en las stats.
+python3 pipeline/build_index.py --totals
+
+# 6. Indicadores de la propia BDNS, ya con filas únicas y sin garantías en las sumas.
+#    Cada uno, de minutos a una hora según el paso. No migran el esquema base.
+python3 pipeline/alerts.py fraccionamiento
+python3 pipeline/alerts.py concentracion
+python3 pipeline/alerts.py calendario
+python3 pipeline/alerts.py estadistica
+python3 pipeline/alerts.py directa
+
+# 7. Cruce de contratos otra vez: misma administración solo con NIF A/B y menor o sin concurrencia,
+#    y las sumas de ayuda sin garantías. Incluye otra vez el paso 1. No baja ZIP.
+#    Puede tardar más que --menor-umbral porque recorre cada contrato contra las concesiones.
+python3 pipeline/contratos.py --alerts-only
+```
+
+El paso 7 repite el detector de menores. Si se acaba de ejecutar el 1 y no se quiere rehacer todo el cruce, se puede omitir el 7 solo cuando no haga falta la criba de NIF A/B; en este cambio sí hace falta. `directa` no cambió de regla, pero conviene repetirlo para que lea la vista ya deduplicada.
+
 ## Arranque
 
 Hace falta Node.js 22 y Python 3.10 o superior. El pipeline solo usa la biblioteca estándar.
@@ -313,7 +396,7 @@ El cruce con contratos públicos, si se quiere, va después y no toca el resto d
 pnpm contratos
 ```
 
-Equivale a `python3 pipeline/contratos.py`. `--years 2018-2022`, `--feeds perfiles,menores,agregadas`, `--keep-raw`, `--alerts-only` y `--rebuild` están en el propio script. La autocomprobación, sin red y sin base de datos:
+Equivale a `python3 pipeline/contratos.py`. `--years 2018-2022`, `--feeds perfiles,menores,agregadas`, `--keep-raw`, `--alerts-only`, `--menor-umbral` y `--rebuild` están en el propio script. `--menor-umbral` solo recalcula los menores repetidos bajo el tope a partir de `placsp_contrato`. `--alerts-only` rehace todos los indicadores de contratos, también ese, sin volver a bajar los ZIP. La autocomprobación, sin red y sin base de datos:
 
 ```bash
 python3 pipeline/contratos.py --self-check

@@ -843,7 +843,9 @@ def create_schema(connection: sqlite3.Connection) -> None:
         DROP TABLE IF EXISTS ben_fts;
         DROP VIEW IF EXISTS convocatorias;
         DROP VIEW IF EXISTS concesiones;
+        DROP VIEW IF EXISTS concesiones_brutas;
         DROP VIEW IF EXISTS beneficiarios;
+        DROP TABLE IF EXISTS concesion_dup;
         DROP TABLE IF EXISTS meta;
         DROP TABLE IF EXISTS convocatoria;
         DROP TABLE IF EXISTS concesion;
@@ -916,7 +918,10 @@ def create_schema(connection: sqlite3.Connection) -> None:
           ccaa_id INTEGER NOT NULL,
           sector_id INTEGER NOT NULL,
           n_concesiones INTEGER NOT NULL DEFAULT 0,
-          importe_total REAL NOT NULL DEFAULT 0
+          importe_total REAL NOT NULL DEFAULT 0,
+          n_garantia INTEGER NOT NULL DEFAULT 0,
+          importe_garantia REAL NOT NULL DEFAULT 0,
+          importe_subvencion REAL NOT NULL DEFAULT 0
         );
 
         CREATE TABLE concesion (
@@ -941,7 +946,11 @@ def create_schema(connection: sqlite3.Connection) -> None:
           persona_id INTEGER NOT NULL UNIQUE,
           tipo_id INTEGER NOT NULL,
           n_concesiones INTEGER,
-          importe_total REAL
+          importe_total REAL,
+          n_subvencion INTEGER NOT NULL DEFAULT 0,
+          importe_subvencion REAL NOT NULL DEFAULT 0,
+          n_garantia INTEGER NOT NULL DEFAULT 0,
+          importe_garantia REAL NOT NULL DEFAULT 0
         );
 
         CREATE TABLE stats_anio (ambito TEXT, anio INTEGER, n INTEGER, importe REAL);
@@ -984,13 +993,23 @@ def create_schema(connection: sqlite3.Connection) -> None:
           ca.nombre AS ccaa,
           s.nombre AS sector,
           c.n_concesiones,
-          c.importe_total
+          c.importe_total,
+          c.n_garantia,
+          c.importe_garantia,
+          c.importe_subvencion
         FROM convocatoria c
         JOIN lut_organismo o ON o.id = c.organismo_id
         JOIN lut_ccaa ca ON ca.id = c.ccaa_id
         JOIN lut_sector s ON s.id = c.sector_id;
 
-        CREATE VIEW concesiones AS
+        CREATE TABLE concesion_dup (
+          concesion_id INTEGER PRIMARY KEY,
+          canon_id INTEGER NOT NULL
+        );
+
+        -- Every physical row, including copies. Sums use `concesiones`, which
+        -- keeps one row per (persona, convocatoria, fecha, importe, instrumento).
+        CREATE VIEW concesiones_brutas AS
         SELECT
           c.id,
           c.id_convocatoria,
@@ -1016,7 +1035,9 @@ def create_schema(connection: sqlite3.Connection) -> None:
           ca.nombre AS ccaa,
           s.nombre AS sector,
           p.ben_key,
-          c.beneficiario_id
+          c.beneficiario_id,
+          CASE WHEN d.concesion_id IS NULL THEN 0 ELSE 1 END AS es_duplicado,
+          COALESCE(d.canon_id, c.id) AS canon_id
         FROM concesion c
         JOIN lut_organismo o ON o.id = c.organismo_id
         JOIN lut_persona p ON p.id = c.persona_id
@@ -1024,7 +1045,11 @@ def create_schema(connection: sqlite3.Connection) -> None:
         JOIN lut_instrumento i ON i.id = c.instrumento_id
         JOIN lut_ccaa ca ON ca.id = c.ccaa_id
         JOIN lut_sector s ON s.id = c.sector_id
-        LEFT JOIN convocatoria cv ON cv.id = c.id_convocatoria;
+        LEFT JOIN convocatoria cv ON cv.id = c.id_convocatoria
+        LEFT JOIN concesion_dup d ON d.concesion_id = c.id;
+
+        CREATE VIEW concesiones AS
+        SELECT * FROM concesiones_brutas WHERE es_duplicado = 0;
 
         CREATE VIEW beneficiarios AS
         SELECT
@@ -1035,7 +1060,11 @@ def create_schema(connection: sqlite3.Connection) -> None:
           p.nombre_norm,
           p.tipo,
           b.n_concesiones,
-          b.importe_total
+          b.importe_total,
+          b.n_subvencion,
+          b.importe_subvencion,
+          b.n_garantia,
+          b.importe_garantia
         FROM beneficiario b
         JOIN lut_persona p ON p.id = b.persona_id;
 
@@ -1243,6 +1272,357 @@ def create_indexes(connection: sqlite3.Connection) -> None:
     )
 
 
+def mark_duplicates(connection: sqlite3.Connection) -> int:
+    """Keep one row per identical grant in the sum view. Raw rows stay.
+
+    The key is beneficiario (persona_id), convocatoria, fecha, importe and
+    instrumento. The lowest id is the one that remains in `concesiones`.
+    The grouping index is dropped afterwards so the file does not keep it.
+    """
+    log("Marcando concesiones idénticas")
+    connection.execute("PRAGMA temp_store = FILE")
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_con_dupkey
+        ON concesion(persona_id, id_convocatoria, instrumento_id, fecha, importe, id)
+        """
+    )
+    connection.execute("DELETE FROM concesion_dup")
+    connection.execute(
+        """
+        INSERT INTO concesion_dup (concesion_id, canon_id)
+        SELECT c.id, g.keep_id
+        FROM concesion c
+        JOIN (
+          SELECT persona_id, id_convocatoria, instrumento_id, fecha, importe, MIN(id) AS keep_id
+          FROM concesion
+          GROUP BY persona_id, id_convocatoria, instrumento_id, fecha, importe
+          HAVING COUNT(*) > 1
+        ) AS g
+          ON c.persona_id = g.persona_id
+         AND c.id_convocatoria IS g.id_convocatoria
+         AND c.instrumento_id = g.instrumento_id
+         AND c.fecha IS g.fecha
+         AND c.importe = g.importe
+         AND c.id != g.keep_id
+        """
+    )
+    connection.execute("DROP INDEX IF EXISTS idx_con_dupkey")
+    count = connection.execute("SELECT COUNT(*) FROM concesion_dup").fetchone()[0]
+    groups = connection.execute("SELECT COUNT(DISTINCT canon_id) FROM concesion_dup").fetchone()[0]
+    log(f"Filas repetidas apartadas de los totales: {count} (en {groups} grupos)")
+    return int(count)
+
+
+def reinstall_sum_views(connection: sqlite3.Connection) -> None:
+    """Replace the sum view on an index that was built before duplicates were marked."""
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS concesion_dup (
+          concesion_id INTEGER PRIMARY KEY,
+          canon_id INTEGER NOT NULL
+        )
+        """
+    )
+    connection.executescript(
+        """
+        DROP VIEW IF EXISTS concesiones;
+        DROP VIEW IF EXISTS concesiones_brutas;
+        CREATE VIEW concesiones_brutas AS
+        SELECT
+          c.id,
+          c.id_convocatoria,
+          COALESCE(cv.codigo_bdns, '') AS codigo_bdns,
+          o.administracion,
+          o.departamento,
+          o.organo,
+          o.organismo,
+          o.organismo_norm,
+          COALESCE(cv.titulo, '') AS titulo,
+          COALESCE(cv.url_bases, '') AS url_bases,
+          c.aplicacion,
+          c.fecha,
+          c.anio,
+          p.nif,
+          p.nombre AS beneficiario_nombre,
+          p.nombre_norm,
+          t.nombre AS tipo_beneficiario,
+          c.importe,
+          i.nombre AS instrumento,
+          i.slug AS instrumento_slug,
+          c.ayuda_equivalente,
+          ca.nombre AS ccaa,
+          s.nombre AS sector,
+          p.ben_key,
+          c.beneficiario_id,
+          CASE WHEN d.concesion_id IS NULL THEN 0 ELSE 1 END AS es_duplicado,
+          COALESCE(d.canon_id, c.id) AS canon_id
+        FROM concesion c
+        JOIN lut_organismo o ON o.id = c.organismo_id
+        JOIN lut_persona p ON p.id = c.persona_id
+        JOIN lut_tipo t ON t.id = c.tipo_id
+        JOIN lut_instrumento i ON i.id = c.instrumento_id
+        JOIN lut_ccaa ca ON ca.id = c.ccaa_id
+        JOIN lut_sector s ON s.id = c.sector_id
+        LEFT JOIN convocatoria cv ON cv.id = c.id_convocatoria
+        LEFT JOIN concesion_dup d ON d.concesion_id = c.id;
+
+        CREATE VIEW concesiones AS
+        SELECT * FROM concesiones_brutas WHERE es_duplicado = 0;
+        """
+    )
+
+
+def _table_columns(connection: sqlite3.Connection, table: str) -> set[str]:
+    return {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+
+
+def ensure_split_columns(connection: sqlite3.Connection) -> None:
+    additions = (
+        ("beneficiario", "n_subvencion", "INTEGER NOT NULL DEFAULT 0"),
+        ("beneficiario", "importe_subvencion", "REAL NOT NULL DEFAULT 0"),
+        ("beneficiario", "n_garantia", "INTEGER NOT NULL DEFAULT 0"),
+        ("beneficiario", "importe_garantia", "REAL NOT NULL DEFAULT 0"),
+        ("convocatoria", "n_garantia", "INTEGER NOT NULL DEFAULT 0"),
+        ("convocatoria", "importe_garantia", "REAL NOT NULL DEFAULT 0"),
+        ("convocatoria", "importe_subvencion", "REAL NOT NULL DEFAULT 0"),
+    )
+    for table, name, ddl in additions:
+        if name not in _table_columns(connection, table):
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+
+
+def reinstall_lookup_views(connection: sqlite3.Connection) -> None:
+    connection.executescript(
+        """
+        DROP VIEW IF EXISTS convocatorias;
+        DROP VIEW IF EXISTS beneficiarios;
+        CREATE VIEW convocatorias AS
+        SELECT
+          c.id,
+          c.codigo_bdns,
+          c.mrr,
+          o.administracion,
+          o.departamento,
+          o.organo,
+          o.organismo,
+          o.organismo_norm,
+          c.fecha,
+          c.anio,
+          c.titulo,
+          c.titulo_cooficial,
+          c.url_bases,
+          ca.nombre AS ccaa,
+          s.nombre AS sector,
+          c.n_concesiones,
+          c.importe_total,
+          c.n_garantia,
+          c.importe_garantia,
+          c.importe_subvencion
+        FROM convocatoria c
+        JOIN lut_organismo o ON o.id = c.organismo_id
+        JOIN lut_ccaa ca ON ca.id = c.ccaa_id
+        JOIN lut_sector s ON s.id = c.sector_id;
+
+        CREATE VIEW beneficiarios AS
+        SELECT
+          b.id,
+          p.ben_key,
+          p.nif,
+          p.nombre,
+          p.nombre_norm,
+          p.tipo,
+          b.n_concesiones,
+          b.importe_total,
+          b.n_subvencion,
+          b.importe_subvencion,
+          b.n_garantia,
+          b.importe_garantia
+        FROM beneficiario b
+        JOIN lut_persona p ON p.id = b.persona_id;
+        """
+    )
+
+
+def fill_instrument_splits(connection: sqlite3.Connection) -> None:
+    """Separate cash subsidies from guarantees on the published totals."""
+    log("Separando subvenciones y garantías")
+    ensure_split_columns(connection)
+    connection.execute(
+        "UPDATE beneficiario SET n_subvencion = 0, importe_subvencion = 0, n_garantia = 0, importe_garantia = 0"
+    )
+    connection.execute(
+        """
+        UPDATE beneficiario
+        SET n_subvencion = agg.n, importe_subvencion = agg.importe
+        FROM (
+          SELECT beneficiario_id AS id, COUNT(*) AS n, COALESCE(SUM(importe), 0) AS importe
+          FROM concesiones
+          WHERE instrumento_slug = 'subvencion' AND beneficiario_id IS NOT NULL
+          GROUP BY beneficiario_id
+        ) AS agg
+        WHERE beneficiario.id = agg.id
+        """
+    )
+    connection.execute(
+        """
+        UPDATE beneficiario
+        SET n_garantia = agg.n, importe_garantia = agg.importe
+        FROM (
+          SELECT beneficiario_id AS id, COUNT(*) AS n, COALESCE(SUM(importe), 0) AS importe
+          FROM concesiones
+          WHERE instrumento_slug = 'garantia' AND beneficiario_id IS NOT NULL
+          GROUP BY beneficiario_id
+        ) AS agg
+        WHERE beneficiario.id = agg.id
+        """
+    )
+    connection.execute(
+        "UPDATE convocatoria SET n_garantia = 0, importe_garantia = 0, importe_subvencion = 0"
+    )
+    connection.execute(
+        """
+        UPDATE convocatoria
+        SET importe_subvencion = agg.importe
+        FROM (
+          SELECT id_convocatoria AS id, COALESCE(SUM(importe), 0) AS importe
+          FROM concesiones
+          WHERE instrumento_slug = 'subvencion' AND id_convocatoria IS NOT NULL
+          GROUP BY id_convocatoria
+        ) AS agg
+        WHERE convocatoria.id = agg.id
+        """
+    )
+    connection.execute(
+        """
+        UPDATE convocatoria
+        SET n_garantia = agg.n, importe_garantia = agg.importe
+        FROM (
+          SELECT id_convocatoria AS id, COUNT(*) AS n, COALESCE(SUM(importe), 0) AS importe
+          FROM concesiones
+          WHERE instrumento_slug = 'garantia' AND id_convocatoria IS NOT NULL
+          GROUP BY id_convocatoria
+        ) AS agg
+        WHERE convocatoria.id = agg.id
+        """
+    )
+    if "importe_garantia" not in _table_columns(connection, "beneficiarios"):
+        reinstall_lookup_views(connection)
+
+
+def refresh_published_totals(connection: sqlite3.Connection) -> None:
+    log("Actualizando totales de beneficiario y convocatoria")
+    connection.execute(
+        """
+        UPDATE beneficiario
+        SET n_concesiones = agg.n,
+            importe_total = agg.importe
+        FROM (
+          SELECT beneficiario_id AS id, COUNT(*) AS n, COALESCE(SUM(importe), 0) AS importe
+          FROM concesiones
+          WHERE beneficiario_id IS NOT NULL
+          GROUP BY beneficiario_id
+        ) AS agg
+        WHERE beneficiario.id = agg.id
+        """
+    )
+    connection.execute(
+        """
+        UPDATE convocatoria
+        SET n_concesiones = agg.n,
+            importe_total = agg.importe
+        FROM (
+          SELECT id_convocatoria AS id, COUNT(*) AS n, COALESCE(SUM(importe), 0) AS importe
+          FROM concesiones
+          WHERE id_convocatoria IS NOT NULL
+          GROUP BY id_convocatoria
+        ) AS agg
+        WHERE convocatoria.id = agg.id
+        """
+    )
+    fill_instrument_splits(connection)
+    build_stats(connection)
+    refresh_meta_counts(connection)
+
+
+def refresh_meta_counts(connection: sqlite3.Connection) -> None:
+    updates = {
+        "n_concesiones": "SELECT COUNT(*) FROM concesiones",
+        "importe_total": "SELECT COALESCE(SUM(importe), 0) FROM concesiones",
+        "importe_subvencion": "SELECT COALESCE(SUM(importe), 0) FROM concesiones WHERE instrumento_slug = 'subvencion'",
+        "n_subvencion": "SELECT COUNT(*) FROM concesiones WHERE instrumento_slug = 'subvencion'",
+        "n_garantia": "SELECT COUNT(*) FROM concesiones WHERE instrumento_slug = 'garantia'",
+        "importe_garantia": "SELECT COALESCE(SUM(importe), 0) FROM concesiones WHERE instrumento_slug = 'garantia'",
+        "ccaa_sin_asignar_conc": "SELECT COUNT(*) FROM concesiones WHERE ccaa = 'No determinada'",
+    }
+    for key, sql in updates.items():
+        value = connection.execute(sql).fetchone()[0]
+        connection.execute(
+            """
+            INSERT INTO meta(key, value) VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """,
+            (key, str(value)),
+        )
+    kept = connection.execute(updates["n_concesiones"]).fetchone()[0]
+    log(f"Concesiones en los totales: {kept}")
+
+
+def dedupe_existing() -> None:
+    """Mark duplicate grants on an index that is already built. Does not reload CSVs."""
+    if not DB_PATH.exists():
+        raise SystemExit(f"No hay índice en {DB_PATH}.")
+    connection = sqlite3.connect(DB_PATH)
+    connection.execute("PRAGMA busy_timeout = 8000")
+    connection.execute("PRAGMA temp_store = FILE")
+    connection.execute("PRAGMA cache_size = -20000")
+    connection.execute("PRAGMA mmap_size = 0")
+    try:
+        reinstall_sum_views(connection)
+        mark_duplicates(connection)
+        refresh_published_totals(connection)
+        connection.commit()
+        log(f"Índice actualizado: {DB_PATH} ({DB_PATH.stat().st_size // 1_000_000} MB)")
+    finally:
+        connection.close()
+
+
+def self_check_duplicates() -> None:
+    connection = sqlite3.connect(":memory:")
+    connection.execute(
+        """
+        CREATE TABLE concesion (
+          id INTEGER PRIMARY KEY,
+          persona_id INTEGER,
+          id_convocatoria INTEGER,
+          instrumento_id INTEGER,
+          fecha TEXT,
+          importe REAL
+        )
+        """
+    )
+    connection.execute(
+        "CREATE TABLE concesion_dup (concesion_id INTEGER PRIMARY KEY, canon_id INTEGER NOT NULL)"
+    )
+    connection.executemany(
+        "INSERT INTO concesion (id, persona_id, id_convocatoria, instrumento_id, fecha, importe) VALUES (?,?,?,?,?,?)",
+        [
+            (1, 10, 7, 1, "2020-01-02", 13259729.0),
+            (2, 10, 7, 1, "2020-01-02", 13259729.0),
+            (3, 10, 7, 1, "2020-01-03", 100.0),
+            (4, 11, 7, 1, "2020-01-02", 13259729.0),
+        ],
+    )
+    found = mark_duplicates(connection)
+    rows = connection.execute(
+        "SELECT concesion_id, canon_id FROM concesion_dup ORDER BY concesion_id"
+    ).fetchall()
+    assert found == 1
+    assert rows == [(2, 1)]
+    connection.close()
+    log("Autocomprobación de duplicados correcta.")
+
+
 def build_beneficiarios(connection: sqlite3.Connection) -> None:
     log("Agregando beneficiarios")
     connection.execute(
@@ -1255,6 +1635,8 @@ def build_beneficiarios(connection: sqlite3.Connection) -> None:
           COALESCE(SUM(c.importe), 0)
         FROM concesion c
         JOIN lut_persona p ON p.id = c.persona_id
+        LEFT JOIN concesion_dup d ON d.concesion_id = c.id
+        WHERE d.concesion_id IS NULL
         GROUP BY c.persona_id
         """
     )
@@ -1282,6 +1664,18 @@ def build_beneficiarios(connection: sqlite3.Connection) -> None:
 
 def build_stats(connection: sqlite3.Connection) -> None:
     log("Precalculando el panel")
+    connection.executescript(
+        """
+        DELETE FROM stats_anio;
+        DELETE FROM stats_ccaa;
+        DELETE FROM stats_organismo;
+        DELETE FROM stats_sector;
+        DELETE FROM stats_instrumento;
+        DELETE FROM stats_tipo;
+        DELETE FROM stats_top_beneficiario;
+        DELETE FROM facet_organismo;
+        """
+    )
     connection.execute(
         """
         UPDATE convocatoria
@@ -1289,7 +1683,7 @@ def build_stats(connection: sqlite3.Connection) -> None:
             importe_total = agg.importe
         FROM (
           SELECT id_convocatoria AS id, COUNT(*) AS n, COALESCE(SUM(importe), 0) AS importe
-          FROM concesion
+          FROM concesiones
           WHERE id_convocatoria IS NOT NULL
           GROUP BY id_convocatoria
         ) AS agg
@@ -1373,6 +1767,47 @@ def build_stats(connection: sqlite3.Connection) -> None:
         ) AS agg
         JOIN beneficiarios b ON b.id = agg.id;
 
+        INSERT INTO stats_anio (ambito, anio, n, importe)
+        SELECT 'garantia', anio, COUNT(*), COALESCE(SUM(importe), 0)
+        FROM concesiones
+        WHERE anio IS NOT NULL AND instrumento_slug = 'garantia'
+        GROUP BY anio;
+
+        INSERT INTO stats_ccaa (ambito, ccaa, n, importe)
+        SELECT 'garantia', ccaa, COUNT(*), COALESCE(SUM(importe), 0)
+        FROM concesiones WHERE instrumento_slug = 'garantia'
+        GROUP BY ccaa;
+
+        INSERT INTO stats_sector (ambito, sector, n, importe)
+        SELECT 'garantia', sector, COUNT(*), COALESCE(SUM(importe), 0)
+        FROM concesiones WHERE instrumento_slug = 'garantia'
+        GROUP BY sector;
+
+        INSERT INTO stats_tipo (ambito, tipo, n, importe)
+        SELECT 'garantia', tipo_beneficiario, COUNT(*), COALESCE(SUM(importe), 0)
+        FROM concesiones WHERE instrumento_slug = 'garantia'
+        GROUP BY tipo_beneficiario;
+
+        INSERT INTO stats_organismo (ambito, organismo, n, importe)
+        SELECT ambito, organismo, n, importe FROM (
+          SELECT 'garantia' AS ambito, organismo, COUNT(*) AS n, COALESCE(SUM(importe), 0) AS importe
+          FROM concesiones WHERE instrumento_slug = 'garantia'
+          GROUP BY organismo
+          ORDER BY importe DESC LIMIT 12
+        ) AS top_garantia;
+
+        INSERT INTO stats_top_beneficiario (ambito, beneficiario_id, nombre, nif, tipo, n, importe)
+        SELECT 'garantia', b.id, b.nombre, b.nif, b.tipo, agg.n, agg.importe
+        FROM (
+          SELECT beneficiario_id AS id, COUNT(*) AS n, COALESCE(SUM(importe), 0) AS importe
+          FROM concesiones
+          WHERE instrumento_slug = 'garantia' AND beneficiario_id IS NOT NULL
+          GROUP BY beneficiario_id
+          ORDER BY importe DESC
+          LIMIT 12
+        ) AS agg
+        JOIN beneficiarios b ON b.id = agg.id;
+
         INSERT INTO facet_organismo (nombre, nombre_norm, n, importe)
         SELECT organismo, MIN(organismo_norm), COUNT(*), COALESCE(SUM(importe), 0)
         FROM concesiones
@@ -1387,7 +1822,7 @@ def build_stats(connection: sqlite3.Connection) -> None:
         ON CONFLICT(nombre) DO NOTHING;
         """
     )
-    connection.execute("CREATE INDEX idx_facet_org_norm ON facet_organismo(nombre_norm)")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_facet_org_norm ON facet_organismo(nombre_norm)")
 
 
 def write_meta(connection: sqlite3.Connection) -> None:
@@ -1411,6 +1846,10 @@ def write_meta(connection: sqlite3.Connection) -> None:
             one("SELECT COALESCE(SUM(importe), 0) FROM concesiones WHERE instrumento_slug = 'subvencion'")
         ),
         "n_subvencion": str(one("SELECT COUNT(*) FROM concesiones WHERE instrumento_slug = 'subvencion'")),
+        "n_garantia": str(one("SELECT COUNT(*) FROM concesiones WHERE instrumento_slug = 'garantia'")),
+        "importe_garantia": str(
+            one("SELECT COALESCE(SUM(importe), 0) FROM concesiones WHERE instrumento_slug = 'garantia'")
+        ),
         "ccaa_sin_asignar_conv": str(
             one("SELECT COUNT(*) FROM convocatorias WHERE ccaa = 'No determinada'")
         ),
@@ -1462,7 +1901,11 @@ def build() -> None:
         load_concesiones(connection, geo, catalog)
         create_indexes(connection)
         connection.commit()
+        mark_duplicates(connection)
+        connection.commit()
         build_beneficiarios(connection)
+        connection.commit()
+        fill_instrument_splits(connection)
         connection.commit()
         build_stats(connection)
         write_meta(connection)
@@ -1563,6 +2006,26 @@ def main() -> None:
     csv.field_size_limit(10_000_000)
     if "--self-check" in sys.argv:
         self_check(Geo(VENDOR_MUNICIPIOS))
+        self_check_duplicates()
+        return
+    if "--dedupe" in sys.argv:
+        dedupe_existing()
+        return
+    if "--totals" in sys.argv:
+        if not DB_PATH.exists():
+            raise SystemExit(f"No hay índice en {DB_PATH}.")
+        connection = sqlite3.connect(DB_PATH)
+        connection.execute("PRAGMA temp_store = FILE")
+        connection.execute("PRAGMA cache_size = -20000")
+        connection.execute("PRAGMA mmap_size = 0")
+        try:
+            reinstall_sum_views(connection)
+            fill_instrument_splits(connection)
+            build_stats(connection)
+            refresh_meta_counts(connection)
+            connection.commit()
+        finally:
+            connection.close()
         return
     if "--relabel" in sys.argv:
         relabel_unmapped()

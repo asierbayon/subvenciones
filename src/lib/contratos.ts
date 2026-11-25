@@ -12,6 +12,16 @@ export type ContratoItem = {
   instrumento: string;
 };
 
+export type ContratoPieza = {
+  expediente: string;
+  lote: string;
+  fecha: string;
+  importe: number | null;
+  titulo: string;
+  url: string;
+  organo: string;
+};
+
 export type ContratoAlert = {
   id: number;
   nivel: string;
@@ -41,7 +51,12 @@ export type ContratoAlert = {
   importeConcesiones: number;
   fechaConcesionMin: string;
   fechaConcesionMax: string;
+  puntuacion: number;
+  nContratos: number;
+  umbral: number | null;
+  umbralCodigo: string;
   items: ContratoItem[];
+  piezas: ContratoPieza[];
 };
 
 export type ContratoRow = {
@@ -104,8 +119,71 @@ const mapAlert = (row: Record<string, SQLOutputValue>): ContratoAlert => ({
   importeConcesiones: asNumber(row.importe_concesiones),
   fechaConcesionMin: asString(row.fecha_concesion_min),
   fechaConcesionMax: asString(row.fecha_concesion_max),
+  puntuacion: asNumber(row.puntuacion ?? 0),
+  nContratos: asNumber(row.n_contratos ?? 0),
+  umbral: asNumberOrNull(row.umbral ?? null),
+  umbralCodigo: asString(row.umbral_codigo),
   items: [],
+  piezas: [],
 });
+
+const alertOrder = `ORDER BY CASE nivel
+           WHEN 'menor_umbral' THEN 0
+           WHEN 'mismo_organo' THEN 1
+           WHEN 'organo_superior' THEN 2
+           ELSE 3 END,
+         CASE WHEN nivel = 'menor_umbral' THEN puntuacion ELSE 0 END DESC,
+         menor DESC, sin_concurrencia DESC, dias ASC, importe_contrato DESC`;
+
+const alertOrderLegacy = `ORDER BY CASE nivel
+           WHEN 'mismo_organo' THEN 0
+           WHEN 'organo_superior' THEN 1
+           ELSE 2 END,
+         menor DESC, sin_concurrencia DESC, dias ASC, importe_contrato DESC`;
+
+const isMissingColumn = (error: unknown) => {
+  const message = error instanceof Error ? error.message : "";
+  return message.includes("no such column");
+};
+
+const attachPiezas = (db: Awaited<ReturnType<typeof getDb>>, alerts: ContratoAlert[]) => {
+  const ids = alerts.filter((alert) => alert.nivel === "menor_umbral").map((alert) => alert.id);
+  if (ids.length === 0) {
+    return;
+  }
+  const marks = ids.map(() => "?").join(", ");
+  try {
+    const rows = db
+      .prepare(
+        `SELECT alert_id, expediente, lote, fecha, importe, titulo, url, organo
+         FROM alert_contrato_pieza WHERE alert_id IN (${marks}) ORDER BY fecha`,
+      )
+      .all(...ids) as Record<string, SQLOutputValue>[];
+    const grouped = new Map<number, ContratoPieza[]>();
+    for (const row of rows) {
+      const alertId = asNumber(row.alert_id);
+      const list = grouped.get(alertId) ?? [];
+      list.push({
+        expediente: asString(row.expediente),
+        lote: asString(row.lote),
+        fecha: asString(row.fecha),
+        importe: asNumberOrNull(row.importe),
+        titulo: asString(row.titulo),
+        url: asString(row.url),
+        organo: asString(row.organo),
+      });
+      grouped.set(alertId, list);
+    }
+    for (const alert of alerts) {
+      alert.piezas = grouped.get(alert.id) ?? [];
+    }
+  } catch (error) {
+    if (missingTable(error)) {
+      return;
+    }
+    throw error;
+  }
+};
 
 const whereOf = (filters: AlertFilters) => {
   const clauses: string[] = [];
@@ -128,7 +206,12 @@ const whereOf = (filters: AlertFilters) => {
   if (filters.tipo === "sin_concurrencia") {
     clauses.push("sin_concurrencia = 1");
   }
-  if (filters.tipo === "mismo_organo" || filters.tipo === "organo_superior" || filters.tipo === "misma_administracion") {
+  if (
+    filters.tipo === "mismo_organo" ||
+    filters.tipo === "organo_superior" ||
+    filters.tipo === "misma_administracion" ||
+    filters.tipo === "menor_umbral"
+  ) {
     clauses.push("nivel = ?");
     params.push(filters.tipo);
   }
@@ -143,14 +226,19 @@ export const listContratos = async (filters: AlertFilters) => {
     const total = asNumber(
       (db.prepare(`SELECT COUNT(*) AS n FROM alert_contrato ${where}`).get(...params) as { n: number }).n,
     );
-    const rows = db
-      .prepare(
-        `SELECT * FROM alert_contrato ${where}
-         ORDER BY CASE nivel WHEN 'mismo_organo' THEN 0 WHEN 'organo_superior' THEN 1 ELSE 2 END,
-                  menor DESC, sin_concurrencia DESC, dias ASC, importe_contrato DESC
-         LIMIT ? OFFSET ?`,
-      )
-      .all(...params, ALERT_PAGE_SIZE, (filters.page - 1) * ALERT_PAGE_SIZE) as Record<string, SQLOutputValue>[];
+    let rows: Record<string, SQLOutputValue>[];
+    try {
+      rows = db
+        .prepare(`SELECT * FROM alert_contrato ${where} ${alertOrder} LIMIT ? OFFSET ?`)
+        .all(...params, ALERT_PAGE_SIZE, (filters.page - 1) * ALERT_PAGE_SIZE) as Record<string, SQLOutputValue>[];
+    } catch (error) {
+      if (!isMissingColumn(error)) {
+        throw error;
+      }
+      rows = db
+        .prepare(`SELECT * FROM alert_contrato ${where} ${alertOrderLegacy} LIMIT ? OFFSET ?`)
+        .all(...params, ALERT_PAGE_SIZE, (filters.page - 1) * ALERT_PAGE_SIZE) as Record<string, SQLOutputValue>[];
+    }
     const alerts = rows.map(mapAlert);
     const ids = alerts.map((alert) => alert.id);
     if (ids.length > 0) {
@@ -169,6 +257,7 @@ export const listContratos = async (filters: AlertFilters) => {
         alert.items = grouped.get(alert.id) ?? [];
       }
     }
+    attachPiezas(db, alerts);
     const ccaa = (
       db.prepare("SELECT DISTINCT ccaa FROM alert_contrato ORDER BY ccaa").all() as { ccaa: string }[]
     ).map((row) => row.ccaa);
@@ -239,6 +328,7 @@ export const contratosDeNif = async (nif: string) => {
         alert.items = grouped.get(alert.id) ?? [];
       }
     }
+    attachPiezas(db, alerts);
     const byKey = new Map<string, ContratoAlert>();
     for (const alert of alerts) {
       const key = `${alert.expediente}|${alert.lote}`;
@@ -286,13 +376,16 @@ export const contratosDeNif = async (nif: string) => {
 };
 
 const rank = (alert: ContratoAlert) => {
-  if (alert.nivel === "mismo_organo") {
+  if (alert.nivel === "menor_umbral") {
     return 0;
   }
-  if (alert.nivel === "organo_superior") {
+  if (alert.nivel === "mismo_organo") {
     return 1;
   }
-  return 2;
+  if (alert.nivel === "organo_superior") {
+    return 2;
+  }
+  return 3;
 };
 
 export const alertasDeOrganismo = async (organismo: string, exact: boolean) => {
@@ -310,7 +403,7 @@ export const alertasDeOrganismo = async (organismo: string, exact: boolean) => {
     const rows = db
       .prepare(
         `SELECT * FROM alert_contrato WHERE ${clause}
-         ORDER BY CASE nivel WHEN 'mismo_organo' THEN 0 WHEN 'organo_superior' THEN 1 ELSE 2 END,
+         ORDER BY CASE nivel WHEN 'menor_umbral' THEN 0 WHEN 'mismo_organo' THEN 1 WHEN 'organo_superior' THEN 2 ELSE 3 END,
                   menor DESC, dias ASC
          LIMIT 8`,
       )
@@ -333,6 +426,7 @@ export const alertasDeOrganismo = async (organismo: string, exact: boolean) => {
         alert.items = grouped.get(alert.id) ?? [];
       }
     }
+    attachPiezas(db, alerts);
     return { total, alerts, organismo };
   } catch (error) {
     if (missingTable(error)) {
@@ -380,6 +474,7 @@ export const alertasDePar = async (nif: string, organismo: string) => {
         alert.items = grouped.get(alert.id) ?? [];
       }
     }
+    attachPiezas(db, alerts);
     return { total, alerts };
   } catch (error) {
     if (missingTable(error)) {

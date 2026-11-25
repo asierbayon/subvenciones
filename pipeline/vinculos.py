@@ -51,6 +51,55 @@ POLITICOS_PATH = ROOT / "data" / "politicos.sqlite"
 PUBLISH_THRESHOLD = 0.85
 APODERADO_PENALTY = 0.07
 SIN_FECHAS_PENALTY = 0.05
+PUBLIC_NIF_PREFIX = frozenset("PQSR")
+
+# Empresas municipales, públicas o mixtas donde el concejal está por el cargo.
+# No son un vínculo oculto: el acta le nombra administrador.
+INSTITUTIONAL_MARKERS = (
+    "MUNICIPAL",
+    "PUBLICA",
+    "SOCIEDAD MIXTA",
+    "EMPRESA MUNICIPAL",
+    "PATRONATO",
+    "AYUNTAMIENTO",
+    "AJUNTAMENT",
+    "CONCELLO",
+    "DIPUTACION",
+    "CABILDO",
+)
+MUNICIPAL_ACTIVITY = (
+    "DEPORTE",
+    "DEPORTES",
+    "TURISMO",
+    "CULTURA",
+    "CULTURAS",
+    "VIVIENDA",
+    "AGUAS",
+    "PATRIMONIO",
+    "APARCAMIENTO",
+    "MERCADO",
+    "MERCADOS",
+    "RESIDENCIA",
+    "TEATRO",
+    "AUDITORIO",
+    "PUERTO",
+    "VILLA DE",
+    "CLUB DE CAMPO",
+    "DESARROLLO",
+)
+SOCIO_ADMIN_MARKERS = (
+    "AYUNTAMIENTO",
+    "AJUNTAMENT",
+    "CONCELLO",
+    "DIPUTACION",
+    "CABILDO",
+    "ADMINISTRACION",
+    "CONSEJERIA",
+    "MINISTERIO",
+    "PATRONATO",
+    "MUNICIPAL",
+    "DIPUTACION PROV",
+)
 
 # A grant whose text says one of these is not "the council" unless it also
 # names an ayuntamiento, a concello or an ajuntament explicitly.
@@ -227,6 +276,64 @@ def cargo_debil(cargo: str) -> bool:
     return fold_name(cargo).startswith("APODERAD")
 
 
+def _has_phrase(folded: str, phrase: str) -> bool:
+    return f" {phrase} " in f" {folded} "
+
+
+def empresa_ex_officio(nif: str, nombre: str, municipio: str, provincia: str = "") -> bool:
+    """True when the company is a public vehicle, not a private counterparty.
+
+    Councillors sit on the board of the municipal company by reason of office.
+    Those rows drown the list (about 148 of 160 in the November 2026 pass).
+    """
+    if nif and nif[0] in PUBLIC_NIF_PREFIX:
+        return True
+    folded = fold_name(nombre)
+    if not folded:
+        return False
+    for marker in INSTITUTIONAL_MARKERS:
+        if marker in folded:
+            return True
+    activity = False
+    for phrase in MUNICIPAL_ACTIVITY:
+        if _has_phrase(folded, phrase):
+            activity = True
+            break
+    if not activity:
+        return False
+    for place in (municipio, provincia):
+        token = fold_name(place)
+        if len(token) < 4:
+            continue
+        if _has_phrase(folded, token):
+            return True
+    return False
+
+
+def nifs_socio_administracion(connection: sqlite3.Connection) -> set[str]:
+    """NIFs whose registered partner is itself an administration."""
+    tables = {
+        row[0]
+        for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+    }
+    if "borme_persona" not in tables or "borme_empresa" not in tables:
+        return set()
+    found: set[str] = set()
+    cursor = connection.execute(
+        """
+        SELECT e.nif, p.nombre
+        FROM borme_persona p
+        JOIN borme_empresa e ON e.beneficiario_id = p.beneficiario_id
+        WHERE p.rol = 'S' AND e.nif != ''
+        """
+    )
+    for nif, nombre in cursor:
+        folded = fold_name(nombre or "")
+        if any(marker in folded for marker in SOCIO_ADMIN_MARKERS):
+            found.add(nif)
+    return found
+
+
 def blob_de(concesion: Concesion) -> str:
     return fold_name(
         " ".join(
@@ -328,7 +435,9 @@ def emparejar(
     admins: list[Administrador],
     concesiones: list[Concesion],
     municipios: MunicipioIndex,
+    excluidos: set[str] | None = None,
 ) -> list[Alerta]:
+    blocked = excluidos or set()
     indice = IndiceNombres([(oficial.persona, oficial) for oficial in oficiales])
     by_nif: dict[str, list[Concesion]] = {}
     for concesion in concesiones:
@@ -342,6 +451,8 @@ def emparejar(
         if not hits:
             continue
         for concesion in by_nif.get(admin.nif, []):
+            if concesion.nif in blocked:
+                continue
             if admin.desde or admin.hasta:
                 if not fecha_en_rango(concesion.fecha, admin.desde, admin.hasta):
                     continue
@@ -364,6 +475,13 @@ def emparejar(
                     continue
                 porque = mismo_cuerpo(oficial, concesion, municipios)
                 if not porque:
+                    continue
+                if empresa_ex_officio(
+                    concesion.nif,
+                    concesion.empresa,
+                    oficial.municipio,
+                    oficial.provincia,
+                ):
                     continue
                 rank = ROL_RANK.get(oficial.rol, 0)
                 candidate = (score, rank, oficial, hit, notas, porque)
@@ -723,6 +841,16 @@ def self_check() -> None:
     absent = {"B0000031E", "B0000041F", "B0000051G", "B0000061H", "B0000081J"}
     assert absent.isdisjoint(by_nif)
     assert len(alertas) == 9
+    assert empresa_ex_officio("A0000000A", "Pública de Desarrollo Municipal de Altea", "Altea")
+    assert empresa_ex_officio("B0000000B", "Logroño Deporte", "Logroño")
+    assert empresa_ex_officio("A0000000A", "Club de Campo Villa de Madrid", "Madrid")
+    assert empresa_ex_officio("A0000000A", "Cartagena Puerto de Culturas", "Cartagena")
+    assert empresa_ex_officio("B0000000B", "Turismo de Valladolid", "Valladolid")
+    assert empresa_ex_officio("Q0000000Q", "Servicios Privados SL", "Madrid")
+    assert empresa_ex_officio("A0000000A", "Patronato Municipal de Cultura", "Altea")
+    assert empresa_ex_officio("B0000000B", "Sociedad Mixta del Suelo", "Altea")
+    assert not empresa_ex_officio("B0000014A", "Lizarraga Zerbitzuak SL", "Abla")
+    assert not empresa_ex_officio("B0000000B", "Talleres Hermanos Madrid SL", "Madrid")
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "vinculos.sqlite"
         connection = sqlite3.connect(path)
@@ -898,7 +1026,10 @@ def build_real(db_path: Path, politicos_path: Path) -> int:
             return 0
         concesiones = load_concesiones(connection, nifs)
         print(f"Subvenciones de esos NIF: {len(concesiones)}")
-        alertas = emparejar(oficiales, admins, concesiones, MunicipioIndex())
+        excluidos = nifs_socio_administracion(connection)
+        if excluidos:
+            print(f"NIF con un socio que es administración, fuera del cruce: {len(excluidos)}")
+        alertas = emparejar(oficiales, admins, concesiones, MunicipioIndex(), excluidos)
         write_alertas(connection, alertas)
         print(f"Indicadores publicados: {len(alertas)}")
         return len(alertas)

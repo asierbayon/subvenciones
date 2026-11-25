@@ -222,6 +222,24 @@ DOM_RE = re.compile(
 )
 CONST_RE = re.compile(r"(?:^|\.\s+)Constitución\b")
 DISSOLVE_RE = re.compile(r"(?:^|\.\s+)(?:Disolución|Extinción|Cierre provisional)\b")
+CIERRE_PRIORITY = {
+    "fusion": 6,
+    "escision": 6,
+    "concurso": 4,
+    "voluntaria": 3,
+    "extincion": 2,
+    "provisional": 2,
+    "disolucion": 1,
+}
+CIERRE_TEXTO = {
+    "voluntaria": "disolución voluntaria",
+    "concurso": "disolución por concurso de acreedores",
+    "extincion": "extinción",
+    "disolucion": "disolución",
+    "provisional": "cierre provisional de la hoja",
+    "fusion": "disolución por fusión o absorción",
+    "escision": "disolución por escisión",
+}
 NIF_RE = re.compile(
     r"(?:C\.?\s*I\.?\s*F\.?|N\.?\s*I\.?\s*F\.?)\s*[:.]?\s*([ABCDEFGHJNPQRSUVW]\d{7}[0-9A-J])",
     re.IGNORECASE,
@@ -524,6 +542,54 @@ class Acto:
     domicilio_key: str
     personas: str
     nif: str
+    cierre: str = ""
+
+
+def classify_cierre(body: str) -> str:
+    """Cause of a dissolution, read from the announcement sentence.
+
+    Fusión, absorción and escisión are structural reorganisations. They are
+    not a company that shuts after taking a grant. The other labels stay, and
+    the alert text names them.
+    """
+    folded = fold(body)
+    if not folded:
+        return ""
+    if not re.search(r"\b(DISOLUCION|EXTINCION|CIERRE PROVISIONAL|CONCURSO|CONCURSAL)\b", folded):
+        return ""
+    if re.search(r"\b(FUSION|ABSORCION)\b", folded):
+        return "fusion"
+    if re.search(r"\bESCISION\b", folded):
+        return "escision"
+    if re.search(r"\b(CONCURSO|CONCURSAL)\b", folded):
+        return "concurso"
+    if re.search(r"\bVOLUNTARIA\b", folded):
+        return "voluntaria"
+    if re.search(r"\bCIERRE PROVISIONAL\b", folded):
+        return "provisional"
+    if re.search(r"\bEXTINCION\b", folded) and not re.search(r"\bDISOLUCION\b", folded):
+        return "extincion"
+    if re.search(r"\bDISOLUCION\b", folded):
+        return "disolucion"
+    if re.search(r"\bEXTINCION\b", folded):
+        return "extincion"
+    return ""
+
+
+def cierre_estructural(cierre: str) -> bool:
+    return cierre in ("fusion", "escision")
+
+
+def proyecto_spv(titulo: str, organismo: str) -> bool:
+    """Project companies in IDAE and regional-incentive calls are expected to have token capital."""
+    blob = fold(f"{titulo} {organismo}")
+    if "INCENTIVOS REGIONALES" in blob or "INCENTIVO REGIONAL" in blob:
+        return True
+    if re.search(r"\bIDAE\b", blob):
+        return True
+    if "DIVERSIFICACION Y AHORRO DE LA ENERGIA" in blob:
+        return True
+    return False
 
 
 def parse_document(payload: bytes, default_fecha: str = "") -> list[Acto]:
@@ -573,6 +639,7 @@ def parse_document(payload: bytes, default_fecha: str = "") -> list[Acto]:
         fecha_const = begin or (inscription if constituted else None) or (fecha if constituted else None)
         dissolved = 1 if DISSOLVE_RE.search(body) else 0
         fecha_dis = (inscription or fecha) if dissolved else None
+        cierre = classify_cierre(body) if dissolved else ""
         domicilio = parse_domicilio(body)
         nif_match = NIF_RE.search(body)
         nif = nif_match.group(1).upper() if nif_match else ""
@@ -595,6 +662,7 @@ def parse_document(payload: bytes, default_fecha: str = "") -> list[Acto]:
                 domicilio_key=domicilio_key(domicilio) if domicilio else "",
                 personas=encode_people(people_from(body)),
                 nif=nif,
+                cierre=cierre,
             )
         )
 
@@ -684,6 +752,22 @@ def self_check() -> None:
     assert "LOMBARDERO PEREZ DELIO" in piscifactoria.personas
     assert by_name["MODA Y FLORES ALBACETE"].disolucion == 1
     assert by_name["MODA Y FLORES ALBACETE"].fecha_disolucion == "2018-02-22"
+    assert by_name["MODA Y FLORES ALBACETE"].cierre == "extincion"
+    assert classify_cierre("Disolución. Fusión. Extinción.") == "fusion"
+    assert classify_cierre("Disolución. Fusión por absorción. Extinción.") == "fusion"
+    assert classify_cierre("Disolución. Escisión total.") == "escision"
+    assert classify_cierre("Disolución. Voluntaria.") == "voluntaria"
+    assert classify_cierre("Disolución. Concurso de acreedores.") == "concurso"
+    assert classify_cierre("Extinción.") == "extincion"
+    assert classify_cierre("Cierre provisional. Hoja registral cerrada.") == "provisional"
+    assert classify_cierre("Capital: 3.000,00 Euros.") == ""
+    assert cierre_estructural("fusion")
+    assert cierre_estructural("escision")
+    assert not cierre_estructural("voluntaria")
+    assert proyecto_spv("Línea IDAE de autoconsumo", "IDAE")
+    assert proyecto_spv("Proyecto industrial", "Incentivos regionales de Andalucía")
+    assert proyecto_spv("Planta", "Instituto para la Diversificación y Ahorro de la Energía")
+    assert not proyecto_spv("Ayuda al comercio", "Ayuntamiento de Abla")
     assert by_name["FINCA MARCHANTE"].capital == 2439100
     assert by_name["FINCA MARCHANTE"].constitucion == 0
     reduced = reduce_acts(
@@ -714,6 +798,7 @@ def self_check() -> None:
     assert reduced["capital_const"] == 30000
     assert reduced["capital"] == 3000
     assert reduced["disuelta"] == 1
+    assert reduced["cierre"] == ""
     assert reduced["n_anuncios"] == 2
     assert "ECLIMAB APLICACIONES" in reduced["nombres"]
     log("Autocomprobación de BORME correcta.")
@@ -730,6 +815,7 @@ def reduce_acts(acts: list[Acto]) -> dict:
     fuente_const = ""
     fecha_dis = None
     fuente_dis = ""
+    cierre = ""
     domicilio = ""
     domicilio_norm = ""
     fuente_dom = ""
@@ -746,6 +832,8 @@ def reduce_acts(acts: list[Acto]) -> dict:
         if act.disolucion and fecha_dis is None:
             fecha_dis = act.fecha_disolucion or act.fecha
             fuente_dis = act.cve
+        if act.disolucion and CIERRE_PRIORITY.get(act.cierre, 0) > CIERRE_PRIORITY.get(cierre, 0):
+            cierre = act.cierre
         if act.capital is not None:
             capitals.append(f"{act.fecha}|{act.capital:.2f}|{act.cve}")
         if act.domicilio_key:
@@ -775,6 +863,7 @@ def reduce_acts(acts: list[Acto]) -> dict:
         "fuente_const": fuente_const,
         "fecha_disolucion": fecha_dis,
         "fuente_dis": fuente_dis,
+        "cierre": cierre,
         "disuelta": 1 if fecha_dis else 0,
         "domicilio": domicilio,
         "domicilio_key": domicilio_norm,
@@ -915,7 +1004,8 @@ def ensure_acto_schema(connection: sqlite3.Connection) -> None:
           domicilio TEXT,
           domicilio_key TEXT,
           personas TEXT,
-          nif TEXT
+          nif TEXT,
+          cierre TEXT NOT NULL DEFAULT ''
         );
         CREATE TABLE IF NOT EXISTS borme_doc (
           cve TEXT PRIMARY KEY,
@@ -934,6 +1024,9 @@ def ensure_acto_schema(connection: sqlite3.Connection) -> None:
         );
         """
     )
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(acto)")}
+    if "cierre" not in columns:
+        connection.execute("ALTER TABLE acto ADD COLUMN cierre TEXT NOT NULL DEFAULT ''")
 
 
 def meta_set(connection: sqlite3.Connection, key: str, value: str) -> None:
@@ -954,8 +1047,8 @@ def insert_acts(connection: sqlite3.Connection, acts: list[Acto]) -> None:
         INSERT INTO acto (
           fecha, cve, provincia, anuncio, nombre, nombre_key, hoja, registro_key,
           constitucion, fecha_constitucion, disolucion, fecha_disolucion,
-          capital, domicilio, domicilio_key, personas, nif
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          capital, domicilio, domicilio_key, personas, nif, cierre
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         [
             (
@@ -976,6 +1069,7 @@ def insert_acts(connection: sqlite3.Connection, acts: list[Acto]) -> None:
                 act.domicilio_key,
                 act.personas,
                 act.nif,
+                act.cierre,
             )
             for act in acts
         ],
@@ -1146,7 +1240,8 @@ def aggregate(compact: bool) -> None:
               capitales TEXT,
               n_anuncios INTEGER,
               fecha_ultimo TEXT,
-              nif TEXT
+              nif TEXT,
+              cierre TEXT NOT NULL DEFAULT ''
             );
             CREATE TABLE sociedad_nombre (
               registro_key TEXT NOT NULL,
@@ -1169,7 +1264,7 @@ def aggregate(compact: bool) -> None:
             """
             SELECT fecha, cve, provincia, anuncio, nombre, nombre_key, hoja, registro_key,
                    constitucion, fecha_constitucion, disolucion, fecha_disolucion,
-                   capital, domicilio, domicilio_key, personas, nif
+                   capital, domicilio, domicilio_key, personas, nif, cierre
             FROM acto
             ORDER BY registro_key, fecha, id
             """
@@ -1188,8 +1283,8 @@ def aggregate(compact: bool) -> None:
                 INSERT INTO sociedad (
                   registro_key, hoja, provincia, nombre, fecha_constitucion, capital_const, fuente_const,
                   fecha_disolucion, fuente_dis, disuelta, domicilio, domicilio_key, fuente_dom,
-                  capital, capital_fecha, fuente_capital, capitales, n_anuncios, fecha_ultimo, nif
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                  capital, capital_fecha, fuente_capital, capitales, n_anuncios, fecha_ultimo, nif, cierre
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     profile["registro_key"],
@@ -1212,6 +1307,7 @@ def aggregate(compact: bool) -> None:
                     profile["n_anuncios"],
                     profile["fecha_ultimo"],
                     profile["nif"],
+                    profile["cierre"],
                 ),
             )
             connection.executemany(
@@ -1350,7 +1446,8 @@ def ensure_match_schema(connection: sqlite3.Connection) -> None:
           fuente_dom TEXT,
           fuente_capital TEXT,
           n_anuncios INTEGER,
-          nif_borme TEXT
+          nif_borme TEXT,
+          cierre TEXT NOT NULL DEFAULT ''
         );
         CREATE TABLE borme_persona (
           beneficiario_id INTEGER NOT NULL,
@@ -1389,7 +1486,8 @@ def ensure_match_schema(connection: sqlite3.Connection) -> None:
           ratio REAL,
           dias INTEGER,
           fuente_cve TEXT,
-          fuente_url TEXT
+          fuente_url TEXT,
+          peso REAL NOT NULL DEFAULT 1
         );
         CREATE TABLE alert_borme_sociedad_item (
           alert_id INTEGER NOT NULL,
@@ -1542,7 +1640,7 @@ def match() -> None:
             SELECT c.id, s.registro_key, s.hoja, s.provincia, s.nombre, s.fecha_constitucion, s.capital_const,
                    s.fuente_const, s.fecha_disolucion, s.fuente_dis, s.disuelta, s.domicilio, s.domicilio_key,
                    s.fuente_dom, s.capital, s.capital_fecha, s.fuente_capital, s.capitales, s.n_anuncios,
-                   s.fecha_ultimo, s.nif
+                   s.fecha_ultimo, s.nif, COALESCE(s.cierre, '')
             FROM chosen c
             JOIN borme.sociedad s ON s.registro_key = c.registro_key
             """
@@ -1557,14 +1655,14 @@ def match() -> None:
                 empresas.append(
                     (
                         beneficiario_id, nif, nombre, key, level, n_hojas, None, None, None,
-                        None, None, None, None, None, None, None, 0, None, None, None, None, None, None, None,
+                        None, None, None, None, None, None, None, 0, None, None, None, None, None, None, None, "",
                     )
                 )
                 continue
             (
                 _bid, reg, hoja, provincia, _borme_name, fecha_const, capital_const, fuente_const,
                 fecha_dis, fuente_dis, disuelta, domicilio, domicilio_norm, fuente_dom, capital,
-                capital_fecha, fuente_capital, capitales, n_anuncios, _fecha_ultimo, nif_borme,
+                capital_fecha, fuente_capital, capitales, n_anuncios, _fecha_ultimo, nif_borme, cierre,
             ) = profile
             borme_nifs = [item for item in (nif_borme or "").split(",") if item]
             if borme_nifs and nif not in borme_nifs:
@@ -1572,7 +1670,7 @@ def match() -> None:
                 empresas.append(
                     (
                         beneficiario_id, nif, nombre, key, level, n_hojas, None, None, None,
-                        None, None, None, None, None, None, None, 0, None, None, None, None, None, None, ",".join(borme_nifs),
+                        None, None, None, None, None, None, None, 0, None, None, None, None, None, None, ",".join(borme_nifs), "",
                     )
                 )
                 continue
@@ -1583,6 +1681,7 @@ def match() -> None:
                     beneficiario_id, nif, nombre, key, level, n_hojas, reg, hoja, provincia,
                     fecha_const, capital_const, capital, capital_fecha, capitales, domicilio, domicilio_norm,
                     disuelta or 0, fecha_dis, fuente_const, fuente_dis, fuente_dom, fuente_capital, n_anuncios, nif_borme,
+                    cierre or "",
                 )
             )
             for tipo, cve, fecha in (
@@ -1598,8 +1697,9 @@ def match() -> None:
             INSERT INTO borme_empresa (
               beneficiario_id, nif, nombre, nombre_key, confianza, n_candidatas, registro_key, hoja, provincia,
               fecha_constitucion, capital_const, capital, capital_fecha, capitales, domicilio, domicilio_key,
-              disuelta, fecha_disolucion, fuente_const, fuente_dis, fuente_dom, fuente_capital, n_anuncios, nif_borme
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+              disuelta, fecha_disolucion, fuente_const, fuente_dis, fuente_dom, fuente_capital, n_anuncios, nif_borme,
+              cierre
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             empresas,
         )
@@ -1703,7 +1803,8 @@ def build_sociedad_alerts(connection: sqlite3.Connection) -> None:
     for row in connection.execute(
         """
         SELECT beneficiario_id, nif, nombre, confianza, fecha_constitucion, capital_const, capital,
-               capital_fecha, capitales, disuelta, fecha_disolucion, fuente_const, fuente_dis, fuente_capital
+               capital_fecha, capitales, disuelta, fecha_disolucion, fuente_const, fuente_dis, fuente_capital,
+               COALESCE(cierre, '')
         FROM borme_empresa
         WHERE confianza IN ('alta', 'media')
           AND (
@@ -1736,7 +1837,16 @@ def build_sociedad_alerts(connection: sqlite3.Connection) -> None:
     current_key = None
     grants: list[tuple] = []
 
-    def emit(regla: str, motivo: str, chosen: list[tuple], capital: float | None, ratio: float | None, dias: int | None, cve: str) -> None:
+    def emit(
+        regla: str,
+        motivo: str,
+        chosen: list[tuple],
+        capital: float | None,
+        ratio: float | None,
+        dias: int | None,
+        cve: str,
+        peso: float = 1.0,
+    ) -> None:
         nonlocal next_id
         if not chosen:
             return
@@ -1767,6 +1877,7 @@ def build_sociedad_alerts(connection: sqlite3.Connection) -> None:
                 dias,
                 cve,
                 borme_url(cve),
+                peso,
             )
         )
         for grant in chosen[:15]:
@@ -1778,8 +1889,9 @@ def build_sociedad_alerts(connection: sqlite3.Connection) -> None:
         profile = profiles[group[0][0]]
         (
             _bid, _nif, nombre, level, fecha_const, capital_const, _capital, _capital_fecha,
-            capitales, _disuelta, fecha_dis, fuente_const, fuente_dis, _fuente_capital,
+            capitales, _disuelta, fecha_dis, fuente_const, fuente_dis, _fuente_capital, causa_codigo,
         ) = profile
+        causa = CIERRE_TEXTO.get(causa_codigo or "", "disolución o extinción")
         caveat = ""
         if level == "media":
             caveat = "El nombre normalizado es poco distintivo y podría corresponder a otra sociedad homónima. "
@@ -1821,12 +1933,28 @@ def build_sociedad_alerts(connection: sqlite3.Connection) -> None:
                     ratio_best = (ratio_value, picked[0], picked[1], picked[2] or "", grant)
             if fecha_dis and span_dis is not None and 0 <= span_dis <= DISSOLVE_SOON_DAYS and grant[5] >= MIN_GRANT:
                 cierre.append(grant)
+        stacked = (bool(corta) and not cierre_estructural(causa_codigo or "")) or (
+            bool(cierre) and not cierre_estructural(causa_codigo or "")
+        )
+
+        def nota_spv(chosen: list[tuple]) -> tuple[float, str]:
+            if stacked or not chosen:
+                return 1.0, ""
+            if all(proyecto_spv(item[9] or "", item[1] or "") for item in chosen):
+                return (
+                    0.25,
+                    " La convocatoria es de IDAE o de incentivos regionales: una sociedad de proyecto con capital mínimo "
+                    "es el vehículo habitual, y esta señal pesa menos salvo que se acumule otra.",
+                )
+            return 1.0, ""
+
         if nueva and max(grant[5] for grant in nueva) >= MIN_GRANT:
             cited = max(nueva, key=lambda grant: grant[5])
             span_new = day_span(fecha_const, cited[4]) or 0
             extra = ""
             if len(nueva) > 1:
                 extra = f" En ese primer año hay {len(nueva)} subvenciones de este organismo."
+            peso, nota = nota_spv(nueva)
             emit(
                 "nueva_capital",
                 (
@@ -1834,15 +1962,16 @@ def build_sociedad_alerts(connection: sqlite3.Connection) -> None:
                     f"({fuente_const or 'sin identificador'}), {span_new} días antes de la subvención del "
                     f"{fecha_es(cited[4])}. El capital publicado es {euro(nueva_capital or 0)}. "
                     "Una sociedad recién creada con capital mínimo puede ser un vehículo y también una empresa pequeña legítima. "
-                    f"Es un indicador, no una prueba.{extra}"
+                    f"Es un indicador, no una prueba.{extra}{nota}"
                 ),
                 nueva,
                 nueva_capital,
                 None,
                 span_new,
                 nueva_cve,
+                peso,
             )
-        if corta and max(grant[5] for grant in corta) >= MIN_GRANT:
+        if corta and not cierre_estructural(causa_codigo or "") and max(grant[5] for grant in corta) >= MIN_GRANT:
             cited = max(corta, key=lambda grant: grant[5])
             span_new = day_span(fecha_const, cited[4]) or 0
             span_dis = day_span(cited[4], fecha_dis) or 0
@@ -1850,7 +1979,7 @@ def build_sociedad_alerts(connection: sqlite3.Connection) -> None:
                 "nueva_disuelta",
                 (
                     f"{caveat}Constituida el {fecha_es(fecha_const)} ({fuente_const or 'sin identificador'}) "
-                    f"y con disolución o extinción publicada el {fecha_es(fecha_dis)} ({fuente_dis or 'sin identificador'}). "
+                    f"y con {causa} publicada el {fecha_es(fecha_dis)} ({fuente_dis or 'sin identificador'}). "
                     f"La subvención del {fecha_es(cited[4])} cae {span_new} días después de la constitución y "
                     f"{span_dis} días antes del cierre. Es un indicador de sociedad de vida corta, no una prueba."
                 ),
@@ -1862,26 +1991,28 @@ def build_sociedad_alerts(connection: sqlite3.Connection) -> None:
             )
         if ratio_best is not None:
             ratio_value, capital_value, capital_day, capital_cve, grant = ratio_best
+            peso, nota = nota_spv(ratio_rows)
             emit(
                 "importe_capital",
                 (
                     f"{caveat}La subvención de {euro(grant[5])} equivale a {ratio_value:.0f} veces el capital social de "
                     f"{euro(capital_value)} publicado en el BORME ({capital_cve or 'sin identificador'}, a {fecha_es(capital_day)}). "
-                    "El capital social no mide el patrimonio ni la facturación. Es un indicador, no una prueba."
+                    f"El capital social no mide el patrimonio ni la facturación. Es un indicador, no una prueba.{nota}"
                 ),
                 ratio_rows,
                 capital_value,
                 ratio_value,
                 day_span(fecha_const, grant[4]),
                 capital_cve,
+                peso,
             )
-        if cierre:
+        if cierre and not cierre_estructural(causa_codigo or ""):
             closest = min(cierre, key=lambda grant: day_span(grant[4], fecha_dis) or 0)
             span_dis = day_span(closest[4], fecha_dis) or 0
             emit(
                 "disuelta_pronto",
                 (
-                    f"{caveat}El BORME publica disolución o extinción el {fecha_es(fecha_dis)} "
+                    f"{caveat}El BORME publica {causa} el {fecha_es(fecha_dis)} "
                     f"({fuente_dis or 'sin identificador'}), {span_dis} días después de la subvención de "
                     f"{euro(closest[5])} del {fecha_es(closest[4])}. Un cierre posterior a la ayuda puede ser ordinario. "
                     "Es un indicador, no una prueba."
@@ -1907,8 +2038,8 @@ def build_sociedad_alerts(connection: sqlite3.Connection) -> None:
         """
         INSERT INTO alert_borme_sociedad (
           id, regla, motivo, confianza, nif, beneficiario_id, nombre, organismo, organismo_norm, ccaa, anio,
-          fecha_constitucion, capital, fecha_disolucion, importe, ratio, dias, fuente_cve, fuente_url
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          fecha_constitucion, capital, fecha_disolucion, importe, ratio, dias, fuente_cve, fuente_url, peso
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         alerts,
     )
@@ -1928,6 +2059,7 @@ def build_sociedad_alerts(connection: sqlite3.Connection) -> None:
         """
     )
     log(f"Sociedades señaladas: {len(alerts)}")
+    restore_stacked_peso(connection)
 
 
 def build_vinculo_alerts(connection: sqlite3.Connection) -> None:
@@ -2162,6 +2294,124 @@ def build_vinculo_alerts(connection: sqlite3.Connection) -> None:
         """
     )
     log(f"Vínculos: {len(alerts)}")
+    restore_stacked_peso(connection)
+
+
+def restore_stacked_peso(connection: sqlite3.Connection) -> None:
+    """A shared administrator is another signal, so the IDAE down-weight comes back."""
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(alert_borme_sociedad)")}
+    if "peso" not in columns or not table_exists(connection, "alert_borme_vinculo_miembro"):
+        return
+    connection.execute(
+        """
+        UPDATE alert_borme_sociedad
+        SET peso = 1
+        WHERE peso < 1
+          AND nif IN (SELECT nif FROM alert_borme_vinculo_miembro WHERE nif != '')
+        """
+    )
+
+
+def _columns(connection: sqlite3.Connection, table: str) -> set[str]:
+    return {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+
+
+def copy_cierre(connection: sqlite3.Connection) -> None:
+    """Copy sociedad.cierre onto the already matched companies. No download."""
+    if "cierre" not in _columns(connection, "borme_empresa"):
+        connection.execute("ALTER TABLE borme_empresa ADD COLUMN cierre TEXT NOT NULL DEFAULT ''")
+    if not BORME_PATH.exists():
+        return
+    connection.execute("ATTACH DATABASE ? AS borme", (str(BORME_PATH),))
+    try:
+        attached = {
+            name
+            for (name,) in connection.execute("SELECT name FROM borme.sqlite_master WHERE type = 'table'")
+        }
+        if "sociedad" not in attached:
+            return
+        sociedad_columns = {row[1] for row in connection.execute("PRAGMA borme.table_info(sociedad)")}
+        if "cierre" not in sociedad_columns:
+            return
+        connection.execute(
+            """
+            UPDATE borme_empresa
+            SET cierre = (
+              SELECT COALESCE(s.cierre, '') FROM borme.sociedad s
+              WHERE s.registro_key = borme_empresa.registro_key
+            )
+            WHERE registro_key IS NOT NULL
+              AND EXISTS (
+                SELECT 1 FROM borme.sociedad s
+                WHERE s.registro_key = borme_empresa.registro_key
+                  AND COALESCE(s.cierre, '') != ''
+              )
+            """
+        )
+    finally:
+        connection.execute("DETACH DATABASE borme")
+
+
+def ensure_sociedad_alert_tables(connection: sqlite3.Connection) -> None:
+    connection.executescript(
+        """
+        DROP TABLE IF EXISTS alert_borme_sociedad_item;
+        DROP TABLE IF EXISTS alert_borme_sociedad;
+        CREATE TABLE alert_borme_sociedad (
+          id INTEGER PRIMARY KEY,
+          regla TEXT NOT NULL,
+          motivo TEXT NOT NULL,
+          confianza TEXT NOT NULL,
+          nif TEXT NOT NULL,
+          beneficiario_id INTEGER,
+          nombre TEXT NOT NULL,
+          organismo TEXT NOT NULL,
+          organismo_norm TEXT NOT NULL,
+          ccaa TEXT NOT NULL,
+          anio INTEGER NOT NULL,
+          fecha_constitucion TEXT,
+          capital REAL,
+          fecha_disolucion TEXT,
+          importe REAL NOT NULL,
+          ratio REAL,
+          dias INTEGER,
+          fuente_cve TEXT,
+          fuente_url TEXT,
+          peso REAL NOT NULL DEFAULT 1
+        );
+        CREATE TABLE alert_borme_sociedad_item (
+          alert_id INTEGER NOT NULL,
+          concesion_id INTEGER NOT NULL,
+          fecha TEXT NOT NULL,
+          importe REAL NOT NULL,
+          codigo_bdns TEXT,
+          titulo TEXT
+        );
+        """
+    )
+
+
+def rebuild_sociedad_alerts() -> None:
+    """Recompute society indicators from the matched companies already in the index.
+
+    Does not download the BORME and does not redo the name match. Fusión and
+    escisión drop out only when `cierre` was stored while parsing the announcement.
+    """
+    connection = connect_bdns()
+    try:
+        if not table_exists(connection, "borme_empresa"):
+            raise SystemExit("No está borme_empresa. Ejecuta antes python3 pipeline/borme.py match.")
+        log("Rehaciendo indicadores de sociedad desde el cruce ya guardado")
+        copy_cierre(connection)
+        filled = connection.execute(
+            "SELECT COUNT(*) FROM borme_empresa WHERE COALESCE(cierre, '') != ''"
+        ).fetchone()[0]
+        log(f"Sociedades con causa de cierre guardada: {filled}")
+        ensure_sociedad_alert_tables(connection)
+        build_sociedad_alerts(connection)
+        connection.commit()
+    finally:
+        connection.close()
 
 
 def report() -> None:
@@ -2241,7 +2491,11 @@ def muestra(limit: int) -> None:
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Cruce opcional de beneficiarios BDNS con el BORME.")
     parser.add_argument("--self-check", action="store_true")
-    parser.add_argument("command", nargs="?", choices=["fetch", "aggregate", "match", "run", "report", "muestra"])
+    parser.add_argument(
+        "command",
+        nargs="?",
+        choices=["fetch", "aggregate", "match", "run", "report", "muestra", "alerts"],
+    )
     parser.add_argument("--from", dest="start", default=DEFAULT_FROM)
     parser.add_argument("--to", dest="end", default=DEFAULT_TO)
     parser.add_argument("--workers", type=int, default=4)
@@ -2279,6 +2533,9 @@ def main() -> None:
         return
     if command == "muestra":
         muestra(max(1, args.limit))
+        return
+    if command == "alerts":
+        rebuild_sociedad_alerts()
         return
     if command == "run":
         fetch(args.start, args.end, max(1, args.workers), max(0.05, args.gap))

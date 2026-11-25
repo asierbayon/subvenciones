@@ -104,17 +104,45 @@ export type SociedadAlert = {
   items: SociedadItem[];
 };
 
-export const listSociedades = async (filters: AlertFilters) => {
+const withPeso = (where: string, includeVehicles: boolean) => {
+  if (includeVehicles) {
+    return where;
+  }
+  if (where) {
+    return `${where} AND peso >= 1`;
+  }
+  return "WHERE peso >= 1";
+};
+
+export const listSociedades = async (filters: AlertFilters, includeVehicles = false) => {
   const db = await getDb();
-  const { where, params } = whereOf(filters, "regla");
-  const total = asNumber(
-    (db.prepare(`SELECT COUNT(*) AS n FROM alert_borme_sociedad ${where}`).get(...params) as { n: number }).n,
-  );
-  const rows = db
-    .prepare(
-      `SELECT * FROM alert_borme_sociedad ${where} ORDER BY importe DESC, id DESC LIMIT ? OFFSET ?`,
-    )
-    .all(...params, ALERT_PAGE_SIZE, (filters.page - 1) * ALERT_PAGE_SIZE) as Record<string, SQLOutputValue>[];
+  const base = whereOf(filters, "regla");
+  const run = (where: string) => {
+    const total = asNumber(
+      (db.prepare(`SELECT COUNT(*) AS n FROM alert_borme_sociedad ${where}`).get(...base.params) as { n: number }).n,
+    );
+    const rows = db
+      .prepare(
+        `SELECT * FROM alert_borme_sociedad ${where} ORDER BY importe DESC, id DESC LIMIT ? OFFSET ?`,
+      )
+      .all(...base.params, ALERT_PAGE_SIZE, (filters.page - 1) * ALERT_PAGE_SIZE) as Record<string, SQLOutputValue>[];
+    return { total, rows };
+  };
+  let total = 0;
+  let rows: Record<string, SQLOutputValue>[] = [];
+  try {
+    const loaded = run(withPeso(base.where, includeVehicles));
+    total = loaded.total;
+    rows = loaded.rows;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (!message.includes("no such column")) {
+      throw error;
+    }
+    const loaded = run(base.where);
+    total = loaded.total;
+    rows = loaded.rows;
+  }
   const ids = rows.map((row) => asNumber(row.id));
   const itemsByAlert = new Map<number, SociedadItem[]>();
   if (ids.length > 0) {
@@ -276,9 +304,18 @@ export const listVinculos = async (filters: AlertFilters) => {
 
 export const countBormeAlerts = async () => {
   const db = await getDb();
-  const sociedad = asNumber(
-    (db.prepare("SELECT COUNT(*) AS n FROM alert_borme_sociedad").get() as { n: number }).n,
-  );
+  let sociedad = 0;
+  try {
+    sociedad = asNumber(
+      (db.prepare("SELECT COUNT(*) AS n FROM alert_borme_sociedad WHERE peso >= 1").get() as { n: number }).n,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (!message.includes("no such column")) {
+      throw error;
+    }
+    sociedad = asNumber((db.prepare("SELECT COUNT(*) AS n FROM alert_borme_sociedad").get() as { n: number }).n);
+  }
   const vinculo = asNumber((db.prepare("SELECT COUNT(*) AS n FROM alert_borme_vinculo").get() as { n: number }).n);
   return { sociedad, vinculo };
 };

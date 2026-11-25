@@ -10,13 +10,14 @@ const percent = (value: number) =>
   new Intl.NumberFormat("es-ES", { style: "percent", maximumFractionDigits: 1 }).format(value);
 
 const ConcentracionPage = async ({ searchParams }: { searchParams: Promise<AlertSearch> }) => {
-  const filters = parseAlertFilters(await searchParams);
+  const raw = await searchParams;
+  const filters = parseAlertFilters(raw);
+  const repeticion = raw.repeticion;
+  const showRepeticion = repeticion === "1" || (Array.isArray(repeticion) && repeticion[0] === "1");
   const loaded = await guard(async () => {
     try {
-      const [concentracion, recurrentes] = await Promise.all([
-        listConcentracion(filters),
-        listRecurrentes(filters),
-      ]);
+      const concentracion = await listConcentracion(filters);
+      const recurrentes = showRepeticion ? await listRecurrentes(filters) : null;
       return { concentracion, recurrentes };
     } catch (error) {
       if (error instanceof DatabaseMissingError) {
@@ -115,11 +116,16 @@ const ConcentracionPage = async ({ searchParams }: { searchParams: Promise<Alert
 
       <h2 className="mt-12 xp-heading xp-heading-lg">Ganadores que repiten</h2>
       <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
-        Se listan solo entidades privadas que no son universidades, con al menos cuatro años y un millón de euros
-        acumulados. Las transferencias anuales a otra administración o a una universidad quedan fuera: son el
-        presupuesto ordinario, no una señal.
+        Repetir una ayuda varios años es habitual. La lista no se abre sola. Solo entran entidades privadas que no son
+        universidades, con al menos cuatro años y un millón de euros.
       </p>
-      {loaded.recurrentes.rows.length === 0 ? (
+      {loaded.recurrentes === null ? (
+        <p className="mt-4 text-sm">
+          <Link href="/alertas/concentracion?repeticion=1" className="xp-link">
+            Ver beneficiarios que repiten
+          </Link>
+        </p>
+      ) : loaded.recurrentes.rows.length === 0 ? (
         <EmptyState>Ningún beneficiario recurrente con estos filtros.</EmptyState>
       ) : (
         <ol className="mt-4 grid gap-3">
@@ -148,13 +154,15 @@ const ConcentracionPage = async ({ searchParams }: { searchParams: Promise<Alert
           ))}
         </ol>
       )}
-      <AlertPager
-        path="/alertas/concentracion"
-        filters={filters}
-        total={loaded.recurrentes.total}
-        pageSize={loaded.recurrentes.pageSize}
-        field="pagina"
-      />
+      {loaded.recurrentes ? (
+        <AlertPager
+          path="/alertas/concentracion"
+          filters={filters}
+          total={loaded.recurrentes.total}
+          pageSize={loaded.recurrentes.pageSize}
+          field="pagina"
+        />
+      ) : null}
     </>
   );
 };
