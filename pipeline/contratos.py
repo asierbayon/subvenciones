@@ -800,10 +800,16 @@ def match_organismo(
     return None
 
 
-def should_emit(nivel: str, menor: int, sin_concurrencia: int) -> bool:
+def should_emit(nivel: str, menor: int, sin_concurrencia: int, nif: str = "") -> bool:
     if nivel in ("mismo_organo", "organo_superior"):
         return True
-    if nivel == "misma_administracion" and (menor or sin_concurrencia):
+    # Same administration is a weak link. Keep it only for private companies
+    # and only when the award was a minor contract or skipped open competition.
+    if nivel != "misma_administracion":
+        return False
+    if not nif or nif[0] not in ("A", "B"):
+        return False
+    if menor or sin_concurrencia:
         return True
     return False
 
@@ -1841,7 +1847,7 @@ def rebuild_alerts(connection: sqlite3.Connection) -> None:
             }, dir3_index)
             if match is None:
                 continue
-            if not should_emit(match[0], contract[14], contract[15]):
+            if not should_emit(match[0], contract[14], contract[15], contract[2]):
                 continue
             organo = group[0][4]
             in_window = [
@@ -2053,9 +2059,12 @@ def self_check() -> None:
         {},
     )
     assert regional is not None and regional[0] == "misma_administracion"
-    assert should_emit("misma_administracion", 1, 1)
-    assert not should_emit("misma_administracion", 0, 0)
-    assert should_emit("mismo_organo", 0, 0)
+    assert should_emit("misma_administracion", 1, 1, "B86965936")
+    assert should_emit("misma_administracion", 0, 1, "A23398001")
+    assert not should_emit("misma_administracion", 1, 1, "Q2876001H")
+    assert not should_emit("misma_administracion", 1, 1, "G65529661")
+    assert not should_emit("misma_administracion", 0, 0, "B86965936")
+    assert should_emit("mismo_organo", 0, 0, "Q2876001H")
     patrimonio = canon("Dirección General del Patrimonio del Estado")
     corto = canon("D.G. del Patrimonio del Estado")
     by_dir3 = match_organismo(

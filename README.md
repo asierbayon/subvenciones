@@ -243,7 +243,7 @@ El indicador salta, dentro de 180 días, en este orden:
 
 1. **Mismo órgano.** El nombre normalizado coincide, o los dos lados comparten un DIR3 único, o los dos son el mismo ayuntamiento, diputación o cabildo aunque uno diga «junta de gobierno».
 2. **Misma jerarquía.** El organismo de la ayuda es una unidad superior en el anuncio, o los dos títulos son el mismo ministerio o la misma consejería tras unificar renombres de 2018-2022 (Hacienda y Función Pública con Hacienda, por ejemplo).
-3. **Misma administración.** Solo si el contrato es menor, negociado sin publicidad (código 3 del listado 2.07; el 4 es con publicidad), tramitación de emergencia o encargo formalizado. Aquí entran dos consejerías distintas de la misma comunidad, no todo el Estado con todo el Estado: «Administración General del Estado» se trata como un cajón, no como un órgano.
+3. **Misma administración.** Solo si el NIF del adjudicatario es de sociedad (A o B) y el contrato es menor, negociado sin publicidad (código 3 del listado 2.07; el 4 es con publicidad), tramitación de emergencia o encargo formalizado. Un NIF Q, P, S o G no entra por esta regla. Aquí entran dos consejerías distintas de la misma comunidad, no todo el Estado con todo el Estado: «Administración General del Estado» se trata como un cajón, no como un órgano. `python3 pipeline/contratos.py --alerts-only` rehace esta criba y el resto de indicadores de contratos sin volver a bajar los ZIP.
 
 Un padre de una sola palabra («Toledo», «Murcia») no se toma como órgano: en la jerarquía es la provincia, y casaría con todos los municipios. Valencia y Valencia de Don Juan tampoco se mezclan, porque el topónimo se compara entero.
 
