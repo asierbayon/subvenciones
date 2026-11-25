@@ -53,12 +53,13 @@ const FraccionamientoPage = async ({ searchParams }: { searchParams: Promise<Ale
     <>
       <PageIntro eyebrow="Fraccionamiento" title="Varias ayudas justo por debajo de un umbral">
         <p>
-          Solo entidades privadas, y solo si las ayudas salen de convocatorias distintas. Cada importe está entre el 90 %
-          y el 100 % de un umbral (15.000 €, 40.000 € o 200.000 €) en 90 días, o varias piezas de al menos 50.000 €
-          suman entre 190.000 € y 200.000 € en 180 días. Además, la mediana del grupo tiene que superar lo que ese
-          organismo suele conceder a privados (percentil 75). Se descartan pagos de la misma convocatoria, importes
-          idénticos, beneficiarios públicos o universidades, y los meses en los que el organismo repite el patrón con
-          más de tres beneficiarios: eso parece un programa, no un fraccionamiento.
+          Solo entidades privadas (quedan fuera los NIF P, Q, S, R y las fundaciones y asociaciones G) y solo si las
+          ayudas salen de la misma convocatoria. Cada importe está entre el 90 % y el 100 % de 200.000 € en 90 días, o
+          varias piezas de al menos 50.000 € suman entre 190.000 € y 200.000 € en 180 días. Ese techo es el de minimis.
+          Los 15.000 € y 40.000 € del contrato menor no son un tope de la subvención y no se usan. Además, la mediana del
+          grupo tiene que superar lo que ese organismo suele conceder a privados (percentil 75). Se descartan importes
+          idénticos, pagos de convocatorias distintas, universidades, y los meses en los que el organismo repite el
+          patrón con más de tres beneficiarios: eso parece un programa, no un fraccionamiento.
         </p>
       </PageIntro>
       <AlertBanner>

@@ -8,7 +8,7 @@ const signals = [
   {
     href: "/alertas/fraccionamiento",
     title: "Fraccionamiento",
-    text: "El mismo NIF cobra varias subvenciones del mismo organismo, juntas en el tiempo y justo por debajo de un umbral de referencia.",
+    text: "El mismo NIF privado cobra varias subvenciones de la misma convocatoria, juntas en el tiempo y justo por debajo del de minimis.",
     table: "alert_fraccion",
   },
   {

@@ -19,23 +19,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = ROOT / "data" / "bdns.sqlite"
 
-# Bands are [80% of the threshold, the threshold). Amounts on the threshold
-# itself are excluded: the pattern of interest is sitting just underneath.
+# The 15,000 € and 40,000 € minor-contract ceilings do not apply to grants.
+# The band that remains is the de minimis ceiling, and only inside one call.
 THRESHOLDS: tuple[tuple[float, str, str], ...] = (
-    (
-        15_000,
-        "contrato_menor_servicios",
-        "Cada importe está entre 12.000 € y 15.000 €, justo bajo la referencia del contrato menor de servicios de la LCSP. No es un tope legal de las subvenciones.",
-    ),
-    (
-        40_000,
-        "contrato_menor_obras",
-        "Cada importe está entre 32.000 € y 40.000 €, justo bajo la referencia del contrato menor de obras de la LCSP. Tampoco es un tope de subvenciones.",
-    ),
     (
         200_000,
         "de_minimis",
-        "Cada importe está entre 160.000 € y 200.000 €, justo bajo el de minimis general de 200.000 € (Reglamento UE 1407/2013, vigente en 2018-2022).",
+        "Cada importe está entre 180.000 € y 200.000 €, justo bajo el de minimis general de 200.000 € (Reglamento UE 1407/2013, vigente en 2018-2022). Los 15.000 € y 40.000 € del contrato menor no son un tope de subvenciones y no se usan.",
     ),
 )
 
@@ -46,7 +36,7 @@ SUM_FLOOR = 190_000
 SUM_MIN_PIECE = 50_000
 SUM_MIN_COUNT = 2
 MAX_COUNT = 4
-PUBLIC_NIF = frozenset("PQS")
+PUBLIC_NIF = frozenset("PQSRG")
 
 
 def log(message: str) -> None:
@@ -166,7 +156,7 @@ def load_body_p75(connection: sqlite3.Connection) -> dict[str, float]:
         SELECT organismo_norm, importe
         FROM concesiones
         WHERE instrumento_slug = 'subvencion' AND importe > 0 AND nif != ''
-          AND substr(nif, 1, 1) NOT IN ('P', 'Q', 'S')
+          AND substr(nif, 1, 1) NOT IN ('P', 'Q', 'S', 'R', 'G')
           AND upper(beneficiario_nombre) NOT LIKE '%UNIVERSIDAD%'
           AND upper(beneficiario_nombre) NOT LIKE '%UNIVERSITAT%'
           AND organismo_norm != ''
@@ -258,7 +248,7 @@ def build_fraccionamiento(connection: sqlite3.Connection) -> int:
         if len(set(row["day"] for row in rows)) < 2 or is_flat(rows):
             return None
         calls = {row["id_convocatoria"] for row in rows if row["id_convocatoria"]}
-        if len(calls) < 2:
+        if len(calls) != 1:
             return None
         usual = body_p75.get(rows[0]["organismo_norm"])
         if usual is None:
@@ -280,18 +270,18 @@ def build_fraccionamiento(connection: sqlite3.Connection) -> int:
         span = (max(dates) - min(dates)).days
         proximity = sum(min(row["importe"] / threshold, 1.0) for row in rows) / len(rows)
         proximity_points = max(0.0, (proximity - BAND_LOW) / (1 - BAND_LOW)) * 40
-        call_points = min(calls, 4) * 8
+        piece_points = min(len(rows), 4) * 8
         elevation = min(max(cluster_median / usual - 1, 0), 2) * 15
         tightness = 15 if span <= 30 else 8 if span <= 60 else 0
-        puntuacion = round(proximity_points + call_points + elevation + tightness, 1)
+        puntuacion = round(proximity_points + piece_points + elevation + tightness, 1)
         def euros(value: float) -> str:
             return f"{value:,.0f}".replace(",", ".")
 
         motivo = (
-            f"{reason} Salen de {calls} convocatorias distintas, en {span} días. "
+            f"{reason} Son {len(rows)} subvenciones de la misma convocatoria, en {span} días. "
             f"La mediana de este grupo ({euros(cluster_median)} €) supera el percentil 75 de lo que "
             f"este organismo concede a entidades privadas ({euros(usual)} €). "
-            f"Puntuación {puntuacion:.0f} de 100: acerca al umbral, convocatorias distintas y rareza para ese organismo."
+            f"Puntuación {puntuacion:.0f} de 100: cercanía al de minimis, número de piezas y rareza para ese organismo."
         )
         alert_id = next_id
         next_id += 1
@@ -361,7 +351,7 @@ def build_fraccionamiento(connection: sqlite3.Connection) -> int:
                     "suma",
                     de_minimis,
                     "de_minimis",
-                    "Varias subvenciones de al menos 50.000 €, de convocatorias distintas, suman entre 190.000 € y 200.000 € en menos de 180 días.",
+                    "Varias subvenciones de al menos 50.000 €, de la misma convocatoria, suman entre 190.000 € y 200.000 € en menos de 180 días.",
                     rows,
                 )
 
@@ -974,6 +964,7 @@ def build_estadistica(connection: sqlite3.Connection) -> None:
         SELECT organismo_norm, importe, organismo, COALESCE(ccaa, 'No determinada')
         FROM concesiones
         WHERE instrumento_slug = 'subvencion' AND importe >= 1 AND organismo_norm != ''
+          AND (nif = '' OR substr(nif, 1, 1) NOT IN ('P', 'Q', 'S', 'R', 'G'))
         ORDER BY organismo_norm
         """
     )
@@ -1029,6 +1020,7 @@ def build_estadistica(connection: sqlite3.Connection) -> None:
         FROM concesiones
         WHERE instrumento_slug = 'subvencion' AND importe > 0
           AND organismo_norm != '' AND tipo_beneficiario != ''
+          AND (nif = '' OR substr(nif, 1, 1) NOT IN ('P', 'Q', 'S', 'R', 'G'))
         ORDER BY organismo_norm, tipo_beneficiario, id
         """
     )

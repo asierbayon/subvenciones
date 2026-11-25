@@ -20,7 +20,8 @@ const shell = (filters: AlertFilters, ccaa: string[], organismos: string[], tota
         de Nigrini para una serie que no se ajusta; hace falta al menos 200 concesiones y que el mayor importe sea cien
         veces el menor. Un importe redondo es múltiplo de 1.000 €, y solo se marca si esa cuota supera en 20 puntos la
         del conjunto del volcado. Un atípico está a 3,5 desviaciones del logaritmo del importe, dentro de su organismo
-        y de su tipo de beneficiario, en grupos de al menos 40 concesiones.
+        y de su tipo de beneficiario, en grupos de al menos 40 concesiones. No entran los NIF de administraciones,
+        congregaciones ni fundaciones (P, Q, S, R, G).
       </p>
     </PageIntro>
     <AlertBanner>
