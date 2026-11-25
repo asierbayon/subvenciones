@@ -60,9 +60,10 @@ const CalendarioPage = async ({ searchParams }: { searchParams: Promise<AlertSea
     <>
       <PageIntro eyebrow="Calendario" title="Cuándo se concentra la concesión">
         <p>
-          Se comparan 45 días antes de una elección con los 45 anteriores, diciembre con el resto del año, y 45 días
-          después de un cambio de gobierno con los 45 previos. El relevo mide el índice de Jaccard entre los
-          beneficiarios de dos años seguidos: por debajo de 0,30, y solo si cada año tenía al menos 15 perceptores.
+          Se comparan 45 días antes de una elección con los 45 anteriores, y 45 días después de un cambio de gobierno
+          con los 45 previos. El relevo mide el índice de Jaccard entre los beneficiarios de dos años seguidos: por
+          debajo de 0,30, y solo si cada año tenía al menos 15 perceptores. Diciembre no sale en esta lista: hace falta
+          el triple de la media del resto del año y, aun así, suele ser el cierre del presupuesto. El filtro lo muestra.
         </p>
       </PageIntro>
       <AlertBanner>

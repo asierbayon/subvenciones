@@ -301,6 +301,8 @@ export const listCalendario = async (filters: AlertFilters) => {
   if (filters.tipo) {
     clauses.push("tipo = ?");
     params.push(filters.tipo);
+  } else {
+    clauses.push("tipo != 'diciembre'");
   }
   if (filters.ccaa) {
     clauses.push("ccaa = ?");

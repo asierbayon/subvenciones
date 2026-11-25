@@ -20,13 +20,13 @@ const signals = [
   {
     href: "/alertas/calendario",
     title: "Calendario",
-    text: "Picos en los 45 días previos a unas elecciones, diciembres muy por encima del resto del año, y relevos bruscos de quién cobra.",
+    text: "Picos en los 45 días previos a unas elecciones y relevos bruscos de quién cobra. Diciembre queda fuera de la lista: casi siempre es el cierre del presupuesto.",
     table: "alert_calendario",
   },
   {
     href: "/alertas/estadistica",
     title: "Señales estadísticas",
-    text: "Primer dígito frente a la ley de Benford, exceso de importes múltiplos de mil euros, y concesiones muy por encima de las de su mismo tipo.",
+    text: "Concesiones muy por encima de las de su mismo tipo, e importes múltiplos de mil euros. Benford queda como consulta: marca a casi todos los organismos.",
     table: "alert_benford",
   },
   {
@@ -163,7 +163,7 @@ const AlertasPage = async () => {
     const recurrentes = await countTable(
       "SELECT COUNT(*) AS n FROM alert_recurrente WHERE n_anios >= 4 AND importe >= 1000000 AND substr(nif, 1, 1) NOT IN ('P', 'Q', 'S') AND upper(nombre) NOT LIKE '%UNIVERSIDAD%' AND upper(nombre) NOT LIKE '%UNIVERSITAT%'",
     );
-    const calendario = await countTable("SELECT COUNT(*) AS n FROM alert_calendario");
+    const calendario = await countTable("SELECT COUNT(*) AS n FROM alert_calendario WHERE tipo != 'diciembre'");
     const benford = await countTable("SELECT COUNT(*) AS n FROM alert_benford WHERE alerta = 1");
     const directa = await countTable("SELECT COUNT(*) AS n FROM alert_directa");
     const contratos = await countTable("SELECT COUNT(*) AS n FROM alert_contrato");

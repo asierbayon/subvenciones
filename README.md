@@ -125,19 +125,19 @@ Benford, los múltiplos de mil y los atípicos tampoco cuentan esos NIF: una adm
 python3 pipeline/alerts.py concentracion
 ```
 
-La concentración usa solo subvenciones dinerarias. El HHI es la suma de los cuadrados de la cuota de cada beneficiario. Se marca un organismo con al menos 20 concesiones y 4 beneficiarios si el HHI llega a 0,25 o si el mayor perceptor se lleva la mitad o más. 0,25 es la escala que el Departamento de Justicia de EE. UU. llama «muy concentrado» en un mercado; aquí es una regla de lectura, no una infracción. Los ganadores recurrentes que se listan son entidades privadas, no universidades, con al menos cuatro años y un millón de euros acumulados. El resto de repeticiones anuales queda fuera de la lista.
+La concentración usa solo subvenciones dinerarias. El HHI es la suma de los cuadrados de la cuota de cada beneficiario. Se marca un organismo con al menos 20 concesiones y 4 beneficiarios si el HHI llega a 0,25 o si el mayor perceptor se lleva la mitad o más. 0,25 es la escala que el Departamento de Justicia de EE. UU. llama «muy concentrado» en un mercado; aquí es una regla de lectura, no una infracción. Los ganadores recurrentes que se guardan son entidades privadas, no universidades, con al menos cuatro años y un millón de euros acumulados. No salen en la lista hasta que se pide `?repeticion=1`. El resto de repeticiones anuales no se guarda.
 
 ```bash
 python3 pipeline/alerts.py calendario
 ```
 
-El calendario compara, para cada organismo, los 45 días previos a una elección con los 45 anteriores; diciembre con la media del resto de ese año; y los 45 días posteriores a un cambio de gobierno (2 jun 2018 y 8 ene 2020) con los 45 previos. Las elecciones autonómicas solo se miran en su comunidad; las generales, en todas. El relevo de beneficiarios es un índice de Jaccard inferior a 0,30 entre dos años seguidos, con al menos 15 perceptores en cada uno.
+El calendario compara, para cada organismo, los 45 días previos a una elección con los 45 anteriores; y los 45 días posteriores a un cambio de gobierno (2 jun 2018 y 8 ene 2020) con los 45 previos. Las elecciones autonómicas solo se miran en su comunidad; las generales, en todas. El relevo de beneficiarios es un índice de Jaccard inferior a 0,30 entre dos años seguidos, con al menos 15 perceptores en cada uno. Diciembre solo se guarda si triplica la media del resto del año, y no sale en la lista salvo que se filtre ese tipo: es el cierre presupuestario.
 
 ```bash
 python3 pipeline/alerts.py estadistica
 ```
 
-Benford usa la desviación media absoluta de Nigrini: por encima de 0,015, con al menos 200 subvenciones y un rango de importes de al menos cien veces. Los múltiplos de 1.000 € se marcan solo si superan en 20 puntos la cuota global del volcado (en este extracto, cerca del 19 % de las subvenciones de 1.000 € o más). Un atípico está a 3,5 desviaciones del logaritmo del importe respecto de las demás subvenciones del mismo organismo y del mismo tipo de beneficiario.
+Benford usa la desviación media absoluta de Nigrini. El corte de 0,015 marca a la mayoría de los organismos, así que la alerta publicada exige MAD por encima de 0,030, al menos 500 subvenciones y un rango de importes de al menos cien veces. La pantalla de estadística abre por los atípicos. Los múltiplos de 1.000 € se marcan solo si superan en 20 puntos la cuota global del volcado (en este extracto, cerca del 19 % de las subvenciones de 1.000 € o más). Un atípico está a 3,5 desviaciones del logaritmo del importe respecto de las demás subvenciones del mismo organismo y del mismo tipo de beneficiario.
 
 ```bash
 python3 pipeline/alerts.py directa
