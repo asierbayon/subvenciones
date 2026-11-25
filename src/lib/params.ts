@@ -1,5 +1,5 @@
 export type Direction = "asc" | "desc";
-export type Vista = "subvencion" | "todos";
+export type Vista = "subvencion" | "garantia" | "todos";
 
 export type Filters = {
   q: string;
@@ -33,7 +33,8 @@ export const parseFilters = (params: SearchParams, fallbackSort = "fecha"): Filt
   const pageRaw = Number.parseInt(first(params, "page") || "1", 10);
   const page = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.min(pageRaw, 400) : 1;
   const dir: Direction = first(params, "dir") === "asc" ? "asc" : "desc";
-  const vista: Vista = first(params, "vista") === "todos" ? "todos" : "subvencion";
+  const vistaRaw = first(params, "vista");
+  const vista: Vista = vistaRaw === "todos" || vistaRaw === "garantia" ? vistaRaw : "subvencion";
   const sort = first(params, "sort").trim() || fallbackSort;
   return {
     q: first(params, "q").trim(),
@@ -75,8 +76,8 @@ export const toQuery = (filters: Filters, patch: Partial<Filters> = {}) => {
   if (next.mrr) {
     params.set("mrr", "1");
   }
-  if (next.vista === "todos") {
-    params.set("vista", "todos");
+  if (next.vista === "todos" || next.vista === "garantia") {
+    params.set("vista", next.vista);
   }
   if (next.page > 1) {
     params.set("page", String(next.page));

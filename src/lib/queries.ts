@@ -43,6 +43,8 @@ export type Meta = {
   importeTotal: number;
   importeSubvencion: number;
   nSubvencion: number;
+  importeGarantia: number;
+  nGarantia: number;
   ccaaSinAsignarConv: number;
   ccaaSinAsignarConc: number;
   notaPlazo: string;
@@ -65,6 +67,9 @@ export type Convocatoria = {
   sector: string;
   nConcesiones: number;
   importeTotal: number;
+  importeSubvencion: number;
+  importeGarantia: number;
+  nGarantia: number;
 };
 
 export type Concesion = {
@@ -101,6 +106,10 @@ export type Beneficiario = {
   tipo: string;
   nConcesiones: number;
   importeTotal: number;
+  nSubvencion: number;
+  importeSubvencion: number;
+  nGarantia: number;
+  importeGarantia: number;
 };
 
 export type Page<T> = {
@@ -169,6 +178,9 @@ const mapConvocatoria = (row: Row): Convocatoria => ({
   sector: asString(row.sector),
   nConcesiones: asNumber(row.n_concesiones),
   importeTotal: asNumber(row.importe_total),
+  importeSubvencion: asNumber(row.importe_subvencion ?? row.importe_total),
+  importeGarantia: asNumber(row.importe_garantia ?? 0),
+  nGarantia: asNumber(row.n_garantia ?? 0),
 });
 
 const mapConcesion = (row: Row): Concesion => ({
@@ -205,6 +217,10 @@ const mapBeneficiario = (row: Row): Beneficiario => ({
   tipo: asString(row.tipo),
   nConcesiones: asNumber(row.n_concesiones),
   importeTotal: asNumber(row.importe_total),
+  nSubvencion: asNumber(row.n_subvencion ?? row.n_concesiones),
+  importeSubvencion: asNumber(row.importe_subvencion ?? row.importe_total),
+  nGarantia: asNumber(row.n_garantia ?? 0),
+  importeGarantia: asNumber(row.importe_garantia ?? 0),
 });
 
 export const getMeta = async (): Promise<Meta> => {
@@ -223,6 +239,8 @@ export const getMeta = async (): Promise<Meta> => {
     importeTotal: num("importe_total"),
     importeSubvencion: num("importe_subvencion"),
     nSubvencion: num("n_subvencion"),
+    importeGarantia: num("importe_garantia"),
+    nGarantia: num("n_garantia"),
     ccaaSinAsignarConv: num("ccaa_sin_asignar_conv"),
     ccaaSinAsignarConc: num("ccaa_sin_asignar_conc"),
     notaPlazo: map.get("nota_plazo") ?? "",

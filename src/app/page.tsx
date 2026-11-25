@@ -22,11 +22,27 @@ const Panel = async ({ searchParams }: { searchParams: Promise<SearchParams> }) 
   }
 
   const subvencionHref = `/${toQuery(filters, { vista: "subvencion", page: 1 })}`;
+  const garantiaHref = `/${toQuery(filters, { vista: "garantia", page: 1 })}`;
   const todosHref = `/${toQuery(filters, { vista: "todos", page: 1 })}`;
   const ccaa = data.ccaa;
-  const importe = filters.vista === "subvencion" ? data.meta.importeSubvencion : data.meta.importeTotal;
-  const concesiones = filters.vista === "subvencion" ? data.meta.nSubvencion : data.meta.nConcesiones;
-  const vistaLabel = filters.vista === "subvencion" ? "subvenciones dinerarias" : "todos los instrumentos";
+  const importe =
+    filters.vista === "garantia"
+      ? data.meta.importeGarantia
+      : filters.vista === "todos"
+        ? data.meta.importeTotal
+        : data.meta.importeSubvencion;
+  const concesiones =
+    filters.vista === "garantia"
+      ? data.meta.nGarantia
+      : filters.vista === "todos"
+        ? data.meta.nConcesiones
+        : data.meta.nSubvencion;
+  const vistaLabel =
+    filters.vista === "garantia"
+      ? "garantías y avales"
+      : filters.vista === "todos"
+        ? "todos los instrumentos"
+        : "subvenciones dinerarias";
 
   return (
     <>
@@ -47,6 +63,14 @@ const Panel = async ({ searchParams }: { searchParams: Promise<SearchParams> }) 
           Solo subvenciones
         </Link>
         <Link
+          href={garantiaHref}
+          role="tab"
+          aria-selected={filters.vista === "garantia"}
+          className={tabClass(filters.vista === "garantia")}
+        >
+          Garantías
+        </Link>
+        <Link
           href={todosHref}
           role="tab"
           aria-selected={filters.vista === "todos"}
@@ -62,8 +86,11 @@ const Panel = async ({ searchParams }: { searchParams: Promise<SearchParams> }) 
         <Kpi label="Beneficiarios" value={formatNumber(data.meta.nBeneficiarios)} hint="Personas jurídicas, agrupadas por NIF" />
       </section>
       <p className="mt-4 max-w-3xl text-sm leading-relaxed text-muted">
-        Las garantías y los préstamos no son una entrega de dinero. Por eso el panel abre en subvenciones dinerarias
-        ({formatEuro(data.meta.importeSubvencion)}). El total de todos los instrumentos es {formatEuro(data.meta.importeTotal)}.
+        Las garantías y los avales (ICO, CERSA y el resto del instrumento Garantía) no son una entrega de dinero y no
+        entran en la suma de subvenciones ({formatEuro(data.meta.importeSubvencion)}, {formatNumber(data.meta.nSubvencion)}{" "}
+        concesiones). Las garantías suman {formatEuro(data.meta.importeGarantia)} en {formatNumber(data.meta.nGarantia)}{" "}
+        filas. El total de todos los instrumentos, ya sin contar dos veces la misma concesión, es{" "}
+        {formatEuro(data.meta.importeTotal)}.
       </p>
       <div className="mt-8 grid gap-4 xl:grid-cols-2">
         <figure className="xp-group">

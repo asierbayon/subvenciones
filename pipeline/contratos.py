@@ -1695,6 +1695,7 @@ def rebuild_alerts(connection: sqlite3.Connection) -> None:
     next_id = 1
     current_nif = None
     grants: list[tuple] = []
+    guarantees: list[tuple] = []
     contracts = 0
 
     def flush() -> None:
@@ -1722,18 +1723,21 @@ def rebuild_alerts(connection: sqlite3.Connection) -> None:
         alerts.clear()
         items.clear()
 
-    def load_grants(nif: str) -> list[tuple]:
-        return connection.execute(
+    def load_grants(nif: str) -> tuple[list[tuple], list[tuple]]:
+        rows = connection.execute(
             """
             SELECT id, fecha, importe, organismo, organismo_norm, administracion, ccaa, titulo,
-                   codigo_bdns, beneficiario_id, beneficiario_nombre, instrumento
+                   codigo_bdns, beneficiario_id, beneficiario_nombre, instrumento, instrumento_slug
             FROM concesiones
             WHERE ben_key = ? AND fecha IS NOT NULL AND organismo_norm != ''
             """,
             (f"N:{nif}",),
         ).fetchall()
+        cash = [row for row in rows if row[12] == "subvencion"]
+        guarantees = [row for row in rows if row[12] == "garantia"]
+        return cash, guarantees
 
-    def emit(contract: tuple, group: list[tuple], match: tuple[str, str, str]) -> None:
+    def emit(contract: tuple, group: list[tuple], match: tuple[str, str, str], guarantees: list[tuple]) -> None:
         nonlocal next_id
         nivel, via, detalle = match
         dates = [row[1] for row in group]
@@ -1766,6 +1770,12 @@ def rebuild_alerts(connection: sqlite3.Connection) -> None:
             "fecha_tipo": contract[20] if len(contract) > 20 else "adjudicacion",
         }
         motivo = build_motivo(alert)
+        if guarantees:
+            garantia_importe = sum(float(row[2] or 0) for row in guarantees)
+            motivo += (
+                f" En la misma ventana hay {len(guarantees)} garantías o avales "
+                f"({euros(garantia_importe)}) que no entran en esa suma: no son una entrega de dinero."
+            )
         alerts.append(
             (
                 next_id,
@@ -1811,7 +1821,7 @@ def rebuild_alerts(connection: sqlite3.Connection) -> None:
         if nif != current_nif:
             flush()
             current_nif = nif
-            grants = load_grants(nif)
+            grants, guarantees = load_grants(nif)
             if contracts % 50000 == 0:
                 log(f"  contratos revisados: {contracts}, indicadores: {next_id - 1}")
         if not grants:
@@ -1833,7 +1843,13 @@ def rebuild_alerts(connection: sqlite3.Connection) -> None:
                 continue
             if not should_emit(match[0], contract[14], contract[15]):
                 continue
-            emit(contract, group, match)
+            organo = group[0][4]
+            in_window = [
+                row
+                for row in guarantees
+                if start <= row[1] <= end and row[4] == organo
+            ]
+            emit(contract, group, match, in_window)
             if len(alerts) >= 400:
                 flush()
     flush()

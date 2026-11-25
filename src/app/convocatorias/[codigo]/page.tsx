@@ -122,7 +122,8 @@ const ConvocatoriaPage = async ({
         <Fact label="Administración" value={row.administracion || "—"} />
         <Fact label="Órgano" value={row.organo || "—"} />
         <Fact label="Concesiones" value={formatNumber(row.nConcesiones)} />
-        <Fact label="Importe concedido" value={formatEuro(row.importeTotal)} />
+        <Fact label="Subvenciones" value={formatEuro(row.importeSubvencion)} />
+        {row.nGarantia > 0 ? <Fact label="Garantías" value={formatEuro(row.importeGarantia)} /> : null}
         <Fact
           label="Fuentes"
           value={

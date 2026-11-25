@@ -99,6 +99,14 @@ python3 pipeline/build_index.py --dedupe
 ```
 
 Añade la tabla `concesion_dup` y sustituye la vista `concesiones`. No migra el resto del esquema. En un índice de este tamaño son unos minutos; el agrupado va a disco (`temp_store=FILE`) para caber en poca RAM. Después hay que rehacer los indicadores que lean importes, porque los que ya estaban calculados sumaron las copias.
+
+Las garantías y los avales (instrumento Garantía: ICO, CERSA y el resto) no entran en el importe de subvención. El panel tiene una pestaña propia. En la ficha del beneficiario y de la convocatoria el importe de subvención y el de garantía se muestran aparte. Los indicadores de contratos suman solo subvenciones dinerarias y, si en la ventana también hay garantías, lo dicen en el texto sin mezclarlas. Sobre un índice ya construido:
+
+```bash
+python3 pipeline/build_index.py --totals
+```
+
+Añade columnas (`importe_subvencion`, `importe_garantia` y los recuentos) si faltan y rellena el panel. No vuelve a leer los CSV.
 - La foto termina en 2022. Volver a lanzar el pipeline vuelve a bajar los mismos ficheros mientras el repositorio archivado no cambie. La BDNS oficial, desde la renovación del portal, ya ofrece descarga; este proyecto no la mezcla con el volcado de Obregón.
 
 ## Alertas
