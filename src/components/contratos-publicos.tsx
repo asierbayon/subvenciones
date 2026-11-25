@@ -11,6 +11,9 @@ import {
 } from "@/lib/contratos";
 
 const nivelLabel = (nivel: string) => {
+  if (nivel === "menor_umbral") {
+    return "Menores bajo el umbral";
+  }
   if (nivel === "mismo_organo") {
     return "Mismo órgano";
   }
@@ -22,6 +25,67 @@ const nivelLabel = (nivel: string) => {
   }
   return "Cruce";
 };
+
+const bandaLabel = (codigo: string) => {
+  if (codigo === "obra") {
+    return "Obras, tope 40.000 € sin IVA";
+  }
+  if (codigo === "servicios") {
+    return "Servicios y suministros, tope 15.000 € sin IVA";
+  }
+  return "Contrato menor";
+};
+
+const MenorUmbralCard = ({ alert }: { alert: ContratoAlert }) => (
+  <article className="xp-card">
+    <div className="flex flex-wrap items-baseline justify-between gap-2">
+      <h3 className="xp-heading">
+        {alert.beneficiarioId ? (
+          <Link href={`/beneficiarios/${alert.beneficiarioId}`} className="xp-link font-normal">
+            {alert.nombre}
+          </Link>
+        ) : (
+          alert.nombre
+        )}
+      </h3>
+      <p className="text-sm font-semibold tabular-nums">
+        {Math.round(alert.puntuacion)} pts · {formatEuro(alert.importeContrato)}
+      </p>
+    </div>
+    <p className="mt-1 text-sm text-muted">
+      {alert.nif} · {alert.organismo} · {alert.ccaa} · {alert.nContratos.toLocaleString("es-ES")} contratos menores ·{" "}
+      {formatDate(alert.fechaConcesionMin)} – {formatDate(alert.fechaContrato)}
+    </p>
+    <div className="mt-2 flex flex-wrap gap-2">
+      <Badge tone="terra">Indicador</Badge>
+      <Badge tone="accent">{nivelLabel(alert.nivel)}</Badge>
+      <Badge>{bandaLabel(alert.umbralCodigo || alert.via)}</Badge>
+    </div>
+    <p className="mt-3 text-sm leading-relaxed">{alert.motivo}</p>
+    <ul className="mt-3 xp-inset-list">
+      {alert.piezas.map((pieza) => (
+        <li
+          key={`${pieza.expediente}-${pieza.lote}-${pieza.fecha}-${pieza.importe}`}
+          className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:items-baseline sm:justify-between"
+        >
+          {pieza.url ? (
+            <ExternalLink href={pieza.url}>
+              {formatEuro(pieza.importe)} el {formatDate(pieza.fecha)}
+            </ExternalLink>
+          ) : (
+            <span>
+              {formatEuro(pieza.importe)} el {formatDate(pieza.fecha)}
+            </span>
+          )}
+          <span className="text-muted sm:max-w-[60%] sm:text-right">
+            {pieza.titulo}
+            {pieza.expediente ? ` · ${pieza.expediente}` : ""}
+          </span>
+        </li>
+      ))}
+    </ul>
+  </article>
+);
 
 const fuenteLabel = (fuente: string) => {
   if (fuente === "menores") {
@@ -46,7 +110,11 @@ const AlertMarks = ({ alert }: { alert: Pick<ContratoAlert, "nivel" | "menor" | 
   </div>
 );
 
-export const ContratoAlertCard = ({ alert }: { alert: ContratoAlert }) => (
+export const ContratoAlertCard = ({ alert }: { alert: ContratoAlert }) => {
+  if (alert.nivel === "menor_umbral") {
+    return <MenorUmbralCard alert={alert} />;
+  }
+  return (
   <article className="xp-card">
     <div className="flex flex-wrap items-baseline justify-between gap-2">
       <h3 className="xp-heading">
@@ -96,7 +164,8 @@ export const ContratoAlertCard = ({ alert }: { alert: ContratoAlert }) => (
       ))}
     </ul>
   </article>
-);
+  );
+};
 
 const ContractLine = ({ row }: { row: ContratoRow }) => (
   <li className="xp-card text-sm">

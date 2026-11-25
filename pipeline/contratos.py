@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import html
+import math
 import re
 import sqlite3
 import sys
@@ -38,6 +39,12 @@ RAW_DIR = ROOT / "data" / "raw" / "placsp"
 
 WINDOW_DAYS = 180
 YEAR_MIN = 2018
+# LCSP: contrato menor de obras por debajo de 40.000 € sin IVA; servicios y
+# suministros por debajo de 15.000 € sin IVA. La señal es la banda 90-100 %.
+OBRA_UMBRAL = 40_000.0
+SERVICIO_UMBRAL = 15_000.0
+UMBRAL_RATIO = 0.90
+MIN_MENORES_UMBRAL = 5
 YEAR_MAX = 2022
 USER_AGENT = "faro-bdns-pipeline"
 ENTRY_CAP = 2_000_000
@@ -801,6 +808,356 @@ def should_emit(nivel: str, menor: int, sin_concurrencia: int) -> bool:
     return False
 
 
+def clasificar_umbral(importe: float | None) -> tuple[str, float] | None:
+    """Banda 90-100 % del contrato menor, sin llegar al tope.
+
+    Un importe no puede caer en las dos bandas: la de servicios acaba en
+    15.000 € y la de obras empieza en 36.000 €.
+    """
+    if importe is None:
+        return None
+    if SERVICIO_UMBRAL * UMBRAL_RATIO <= importe < SERVICIO_UMBRAL:
+        return ("servicios", SERVICIO_UMBRAL)
+    if OBRA_UMBRAL * UMBRAL_RATIO <= importe < OBRA_UMBRAL:
+        return ("obra", OBRA_UMBRAL)
+    return None
+
+
+def puntuacion_umbral(n: int, n_identico: int, proximidad: float) -> float:
+    """0-100. Volumen, cuota del importe repetido y cercanía al tope."""
+    if n <= 0:
+        return 0.0
+    volumen = min(45.0, 18.0 * math.log10(n))
+    identico = 35.0 * (n_identico / n)
+    cerca = max(0.0, (proximidad - UMBRAL_RATIO) / (1.0 - UMBRAL_RATIO)) * 20.0
+    return round(min(100.0, volumen + identico + cerca), 1)
+
+
+def _table_columns(connection: sqlite3.Connection, table: str) -> set[str]:
+    return {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+
+
+def ensure_umbral_schema(connection: sqlite3.Connection) -> None:
+    if not _table_columns(connection, "alert_contrato"):
+        raise SystemExit(
+            "No está alert_contrato. Hace falta un cruce previo (python3 pipeline/contratos.py) "
+            "o al menos las tablas ya guardadas."
+        )
+    columns = _table_columns(connection, "alert_contrato")
+    if "puntuacion" not in columns:
+        connection.execute("ALTER TABLE alert_contrato ADD COLUMN puntuacion REAL NOT NULL DEFAULT 0")
+    if "n_contratos" not in columns:
+        connection.execute("ALTER TABLE alert_contrato ADD COLUMN n_contratos INTEGER NOT NULL DEFAULT 0")
+    if "umbral" not in columns:
+        connection.execute("ALTER TABLE alert_contrato ADD COLUMN umbral REAL")
+    if "umbral_codigo" not in columns:
+        connection.execute("ALTER TABLE alert_contrato ADD COLUMN umbral_codigo TEXT NOT NULL DEFAULT ''")
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS alert_contrato_pieza (
+          alert_id INTEGER NOT NULL,
+          expediente TEXT NOT NULL,
+          lote TEXT NOT NULL,
+          fecha TEXT NOT NULL,
+          importe REAL,
+          titulo TEXT NOT NULL,
+          url TEXT NOT NULL,
+          organo TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_alert_contrato_pieza ON alert_contrato_pieza(alert_id)"
+    )
+
+
+def motivo_umbral(row: dict) -> str:
+    if row["banda"] == "obra":
+        banda = "obras"
+    else:
+        banda = "servicios y suministros"
+    return (
+        "Indicador, no una prueba de incumplimiento. "
+        f"{row['nombre']} ({row['nif']}) acumula {row['n']} contratos menores de {row['organo']} "
+        f"con importe sin IVA entre el 90 % y el 100 % del umbral de {banda} ({euros(row['umbral'])}). "
+        f"El importe que más se repite es {euros(row['modal'])}, en {row['n_identico']} anuncios. "
+        f"La media de estos importes es el {row['proximidad'] * 100:.1f} % del umbral. "
+        f"Puntuación {row['puntuacion']:.0f} de 100: volumen, repetición del mismo importe y cercanía al tope. "
+        "Un contrato menor por debajo del umbral puede ser legal; la señal es la repetición justo debajo, no un anuncio suelto."
+    )
+
+
+def build_menor_umbral(connection: sqlite3.Connection) -> int:
+    """Contratos menores repetidos justo bajo el umbral, mismo órgano y mismo NIF.
+
+    No descarga nada: agrupa placsp_contrato. Una pasada filtra la banda y otra
+    recoge una muestra de anuncios. No carga la tabla entera en memoria.
+    """
+    log("Contratos menores repetidos bajo el umbral")
+    ensure_umbral_schema(connection)
+    connection.execute("DELETE FROM alert_contrato_pieza WHERE alert_id IN (SELECT id FROM alert_contrato WHERE nivel = 'menor_umbral')")
+    connection.execute("DELETE FROM alert_contrato_item WHERE alert_id IN (SELECT id FROM alert_contrato WHERE nivel = 'menor_umbral')")
+    connection.execute("DELETE FROM alert_contrato WHERE nivel = 'menor_umbral'")
+    low_servicio = SERVICIO_UMBRAL * UMBRAL_RATIO
+    low_obra = OBRA_UMBRAL * UMBRAL_RATIO
+    connection.execute("DROP TABLE IF EXISTS menor_grupo")
+    connection.execute(
+        """
+        CREATE TEMP TABLE menor_grupo AS
+        SELECT
+          organo_canon,
+          nif,
+          CASE
+            WHEN importe >= ? AND importe < ? THEN 'obra'
+            ELSE 'servicios'
+          END AS banda,
+          ROUND(importe, 2) AS cents,
+          COUNT(*) AS n,
+          SUM(importe) AS suma,
+          MIN(fecha) AS fecha_min,
+          MAX(fecha) AS fecha_max,
+          MAX(anio) AS anio,
+          MAX(organo) AS organo,
+          MAX(adjudicatario) AS adjudicatario
+        FROM placsp_contrato
+        WHERE menor = 1
+          AND importe IS NOT NULL
+          AND (
+            (importe >= ? AND importe < ?)
+            OR (importe >= ? AND importe < ?)
+          )
+          AND organo_canon != ''
+          AND nif != ''
+        GROUP BY organo_canon, nif, banda, cents
+        """,
+        (low_obra, OBRA_UMBRAL, low_servicio, SERVICIO_UMBRAL, low_obra, OBRA_UMBRAL),
+    )
+    wanted: dict[tuple[str, str, str], dict] = {}
+    current_key: tuple[str, str, str] | None = None
+    acc: dict | None = None
+
+    def flush_group() -> None:
+        if acc is None or current_key is None:
+            return
+        if acc["n"] < MIN_MENORES_UMBRAL:
+            return
+        umbral = OBRA_UMBRAL if acc["banda"] == "obra" else SERVICIO_UMBRAL
+        proximidad = acc["suma"] / acc["n"] / umbral
+        payload = {
+            "organo_canon": acc["organo_canon"],
+            "nif": acc["nif"],
+            "banda": acc["banda"],
+            "n": acc["n"],
+            "suma": acc["suma"],
+            "n_identico": acc["n_identico"],
+            "fecha_min": acc["fecha_min"],
+            "fecha_max": acc["fecha_max"],
+            "anio": acc["anio"],
+            "organo": acc["organo"],
+            "nombre": acc["nombre"],
+            "modal": acc["modal"],
+            "umbral": umbral,
+            "proximidad": proximidad,
+            "puntuacion": puntuacion_umbral(acc["n"], acc["n_identico"], proximidad),
+            "beneficiario_id": None,
+            "ccaa": "No determinada",
+        }
+        payload["motivo"] = motivo_umbral(payload)
+        wanted[current_key] = payload
+
+    for row in connection.execute(
+        """
+        SELECT organo_canon, nif, banda, cents, n, suma, fecha_min, fecha_max, anio, organo, adjudicatario
+        FROM menor_grupo
+        ORDER BY organo_canon, nif, banda
+        """
+    ):
+        organo_canon, nif, banda, cents, n, suma, fecha_min, fecha_max, anio, organo, adjudicatario = row
+        key = (organo_canon, nif, banda)
+        if key != current_key:
+            flush_group()
+            current_key = key
+            acc = {
+                "organo_canon": organo_canon,
+                "nif": nif,
+                "banda": banda,
+                "n": 0,
+                "suma": 0.0,
+                "n_identico": 0,
+                "modal": float(cents),
+                "fecha_min": fecha_min or "",
+                "fecha_max": fecha_max or "",
+                "anio": int(anio or 0),
+                "organo": organo or "Órgano no indicado",
+                "nombre": adjudicatario or nif,
+            }
+        assert acc is not None
+        count = int(n)
+        acc["n"] += count
+        acc["suma"] += float(suma)
+        if count > acc["n_identico"] or (count == acc["n_identico"] and float(cents) < acc["modal"]):
+            acc["n_identico"] = count
+            acc["modal"] = float(cents)
+        if fecha_min and (not acc["fecha_min"] or fecha_min < acc["fecha_min"]):
+            acc["fecha_min"] = fecha_min
+        if fecha_max and fecha_max > acc["fecha_max"]:
+            acc["fecha_max"] = fecha_max
+            acc["anio"] = int(anio or acc["anio"])
+        if organo:
+            acc["organo"] = organo
+        if adjudicatario:
+            acc["nombre"] = adjudicatario
+    flush_group()
+    log(f"Pares órgano + NIF en la banda: {len(wanted)}")
+    if not wanted:
+        connection.execute("DROP TABLE IF EXISTS menor_grupo")
+        connection.commit()
+        return 0
+    by_nif: dict[str, list[dict]] = {}
+    for payload in wanted.values():
+        by_nif.setdefault(payload["nif"], []).append(payload)
+    connection.execute("CREATE TEMP TABLE umbral_nif (nif TEXT PRIMARY KEY)")
+    connection.executemany("INSERT INTO umbral_nif (nif) VALUES (?)", [(nif,) for nif in by_nif])
+    if _table_exists(connection, "beneficiarios"):
+        for nif, beneficiario_id, nombre in connection.execute(
+            """
+            SELECT b.nif, b.id, b.nombre
+            FROM beneficiarios b
+            JOIN umbral_nif u ON u.nif = b.nif
+            """
+        ):
+            for payload in by_nif.get(nif, []):
+                payload["beneficiario_id"] = beneficiario_id
+                if nombre:
+                    payload["nombre"] = nombre
+                    payload["motivo"] = motivo_umbral(payload)
+    if _table_exists(connection, "lut_organismo"):
+        ccaa_por_canon: dict[str, tuple[int, str]] = {}
+        for organismo_norm, ccaa, n in connection.execute(
+            """
+            SELECT o.organismo_norm, ca.nombre, COUNT(*)
+            FROM concesion c
+            JOIN lut_organismo o ON o.id = c.organismo_id
+            JOIN lut_ccaa ca ON ca.id = c.ccaa_id
+            GROUP BY o.organismo_norm, ca.nombre
+            """
+        ):
+            key = canon(organismo_norm or "")
+            if not key:
+                continue
+            current = ccaa_por_canon.get(key)
+            if current is None or int(n) > current[0]:
+                ccaa_por_canon[key] = (int(n), ccaa or "No determinada")
+        for payload in wanted.values():
+            found = ccaa_por_canon.get(payload["organo_canon"])
+            if found:
+                payload["ccaa"] = found[1]
+    samples: dict[tuple[str, str, str], list[tuple]] = {key: [] for key in wanted}
+    cursor = connection.execute(
+        """
+        SELECT organo_canon, nif, importe, expediente, lote, fecha, titulo, url, organo
+        FROM placsp_contrato
+        WHERE menor = 1
+          AND importe IS NOT NULL
+          AND (
+            (importe >= ? AND importe < ?)
+            OR (importe >= ? AND importe < ?)
+          )
+        ORDER BY organo_canon, nif, fecha
+        """,
+        (low_servicio, SERVICIO_UMBRAL, low_obra, OBRA_UMBRAL),
+    )
+    for organo_canon, nif, importe, expediente, lote, fecha, titulo, url, organo in cursor:
+        classified = clasificar_umbral(float(importe))
+        if classified is None:
+            continue
+        key = (organo_canon, nif, classified[0])
+        bucket = samples.get(key)
+        if bucket is None or len(bucket) >= 12:
+            continue
+        bucket.append((expediente or "", lote or "", fecha or "", float(importe), titulo or "", url or "", organo or ""))
+    next_id = connection.execute("SELECT COALESCE(MAX(id), 0) FROM alert_contrato").fetchone()[0] + 1
+    alerts: list[tuple] = []
+    piezas: list[tuple] = []
+    for key, payload in wanted.items():
+        alert_id = next_id
+        next_id += 1
+        codigo = "obra" if payload["banda"] == "obra" else "servicios"
+        alerts.append(
+            (
+                alert_id,
+                "menor_umbral",
+                codigo,
+                f"{payload['n_identico']}×{payload['modal']:.2f}",
+                payload["motivo"],
+                payload["nif"],
+                payload["beneficiario_id"],
+                payload["nombre"],
+                payload["organo"],
+                fold(payload["organo"]),
+                payload["ccaa"],
+                payload["anio"],
+                0,
+                1,
+                1,
+                0,
+                "6",
+                "Contrato menor",
+                "",
+                "",
+                payload["fecha_max"],
+                payload["modal"],
+                payload["organo"],
+                "",
+                f"{payload['n']} contratos menores entre {payload['fecha_min']} y {payload['fecha_max']}",
+                "",
+                "menores",
+                0,
+                payload["suma"],
+                payload["fecha_min"],
+                payload["fecha_max"],
+                payload["puntuacion"],
+                payload["n"],
+                payload["umbral"],
+                codigo,
+            )
+        )
+        for pieza in samples.get(key, []):
+            piezas.append((alert_id, *pieza))
+    connection.executemany(
+        """
+        INSERT INTO alert_contrato (
+          id, nivel, via, detalle, motivo, nif, beneficiario_id, nombre, organismo, organismo_norm,
+          ccaa, anio, dias, menor, sin_concurrencia, emergencia, procedimiento, procedimiento_nombre,
+          expediente, lote, fecha_contrato, importe_contrato, organo_contrato, dir3, titulo_contrato,
+          url, fuente, n_concesiones, importe_concesiones, fecha_concesion_min, fecha_concesion_max,
+          puntuacion, n_contratos, umbral, umbral_codigo
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        alerts,
+    )
+    connection.executemany(
+        """
+        INSERT INTO alert_contrato_pieza (
+          alert_id, expediente, lote, fecha, importe, titulo, url, organo
+        ) VALUES (?,?,?,?,?,?,?,?)
+        """,
+        piezas,
+    )
+    connection.execute("DROP TABLE IF EXISTS menor_grupo")
+    connection.commit()
+    log(f"Menores bajo el umbral: {len(alerts)} indicadores")
+    return len(alerts)
+
+
+def _table_exists(connection: sqlite3.Connection, name: str) -> bool:
+    row = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type IN ('table', 'view') AND name = ?",
+        (name,),
+    ).fetchone()
+    return row is not None
+
+
 def via_texto(via: str, detalle: str) -> str:
     if via == "dir3":
         return (
@@ -987,6 +1344,7 @@ def drop_placsp(connection: sqlite3.Connection) -> None:
         DROP TABLE IF EXISTS placsp_dir3;
         DROP TABLE IF EXISTS placsp_nombre;
         DROP TABLE IF EXISTS placsp_zip;
+        DROP TABLE IF EXISTS alert_contrato_pieza;
         DROP TABLE IF EXISTS alert_contrato_item;
         DROP TABLE IF EXISTS alert_contrato;
         """
@@ -1269,6 +1627,7 @@ def rebuild_alerts(connection: sqlite3.Connection) -> None:
     migrate_contracts(connection)
     connection.executescript(
         """
+        DROP TABLE IF EXISTS alert_contrato_pieza;
         DROP TABLE IF EXISTS alert_contrato_item;
         DROP TABLE IF EXISTS alert_contrato;
         CREATE TABLE alert_contrato (
@@ -1302,7 +1661,11 @@ def rebuild_alerts(connection: sqlite3.Connection) -> None:
           n_concesiones INTEGER NOT NULL,
           importe_concesiones REAL NOT NULL,
           fecha_concesion_min TEXT NOT NULL,
-          fecha_concesion_max TEXT NOT NULL
+          fecha_concesion_max TEXT NOT NULL,
+          puntuacion REAL NOT NULL DEFAULT 0,
+          n_contratos INTEGER NOT NULL DEFAULT 0,
+          umbral REAL,
+          umbral_codigo TEXT NOT NULL DEFAULT ''
         );
         CREATE TABLE alert_contrato_item (
           alert_id INTEGER NOT NULL,
@@ -1484,6 +1847,7 @@ def rebuild_alerts(connection: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_alert_contrato_item ON alert_contrato_item(alert_id);
         """
     )
+    build_menor_umbral(connection)
     write_coverage(connection)
     connection.commit()
     total = connection.execute("SELECT COUNT(*) FROM alert_contrato").fetchone()[0]
@@ -1549,6 +1913,7 @@ def write_coverage(connection: sqlite3.Connection) -> None:
         "alertas_administracion": str(nivel("misma_administracion")),
         "alertas_menor": str(flag("menor")),
         "alertas_sin_concurrencia": str(flag("sin_concurrencia")),
+        "alertas_menor_umbral": str(nivel("menor_umbral")),
         "generado": datetime.now().strftime("%Y-%m-%d %H:%M"),
     }
     connection.executemany(
@@ -1578,7 +1943,8 @@ def print_coverage(connection: sqlite3.Connection, values: dict[str, str]) -> No
         f"(mismo órgano {values['alertas_mismo_organo']}, "
         f"jerarquía {values['alertas_organo_superior']}, "
         f"administración {values['alertas_administracion']}; "
-        f"menores {values['alertas_menor']}, sin convocatoria abierta {values['alertas_sin_concurrencia']})."
+        f"menores {values['alertas_menor']}, sin convocatoria abierta {values['alertas_sin_concurrencia']}; "
+        f"menores bajo el umbral {values.get('alertas_menor_umbral', '0')})."
     )
     for fuente, anio, entradas, guardados in connection.execute(
         "SELECT fuente, anio, entradas, guardados FROM placsp_zip ORDER BY fuente, anio"
@@ -1801,6 +2167,82 @@ def self_check() -> None:
     assert "nombre normalizado" in motivo.lower()
     assert days_between("2020-01-01", "2020-06-29") == 180
     assert shift_day("2020-01-01", -1) == "2019-12-31"
+    assert clasificar_umbral(39669.42) == ("obra", OBRA_UMBRAL)
+    assert clasificar_umbral(36000) == ("obra", OBRA_UMBRAL)
+    assert clasificar_umbral(40000) is None
+    assert clasificar_umbral(14999) == ("servicios", SERVICIO_UMBRAL)
+    assert clasificar_umbral(13500) == ("servicios", SERVICIO_UMBRAL)
+    assert clasificar_umbral(13499.99) is None
+    assert clasificar_umbral(15000) is None
+    alto = puntuacion_umbral(295, 295, 39669.42 / OBRA_UMBRAL)
+    bajo = puntuacion_umbral(5, 1, 0.91)
+    assert alto >= 90
+    assert bajo < alto
+    probe = sqlite3.connect(":memory:")
+    probe.execute(
+        """
+        CREATE TABLE placsp_contrato (
+          expediente TEXT, lote TEXT, nif TEXT, adjudicatario TEXT, organo TEXT, organo_canon TEXT,
+          dir3 TEXT, padres TEXT, tipo_poder TEXT, fecha TEXT, anio INTEGER, importe REAL,
+          procedimiento TEXT, procedimiento_nombre TEXT, menor INTEGER, sin_concurrencia INTEGER,
+          emergencia INTEGER, titulo TEXT, url TEXT, fuente TEXT, updated TEXT, entrada_id TEXT,
+          fecha_tipo TEXT
+        )
+        """
+    )
+    probe.execute(
+        """
+        CREATE TABLE alert_contrato (
+          id INTEGER PRIMARY KEY,
+          nivel TEXT, via TEXT, detalle TEXT, motivo TEXT, nif TEXT, beneficiario_id INTEGER,
+          nombre TEXT, organismo TEXT, organismo_norm TEXT, ccaa TEXT, anio INTEGER, dias INTEGER,
+          menor INTEGER, sin_concurrencia INTEGER, emergencia INTEGER, procedimiento TEXT,
+          procedimiento_nombre TEXT, expediente TEXT, lote TEXT, fecha_contrato TEXT,
+          importe_contrato REAL, organo_contrato TEXT, dir3 TEXT, titulo_contrato TEXT, url TEXT,
+          fuente TEXT, n_concesiones INTEGER, importe_concesiones REAL, fecha_concesion_min TEXT,
+          fecha_concesion_max TEXT
+        )
+        """
+    )
+    probe.execute("CREATE TABLE alert_contrato_item (alert_id INTEGER, concesion_id INTEGER, fecha TEXT, importe REAL, codigo_bdns TEXT, titulo TEXT, instrumento TEXT)")
+    for index in range(6):
+        probe.execute(
+            """
+            INSERT INTO placsp_contrato (
+              expediente, lote, nif, adjudicatario, organo, organo_canon, dir3, padres, tipo_poder,
+              fecha, anio, importe, procedimiento, procedimiento_nombre, menor, sin_concurrencia,
+              emergencia, titulo, url, fuente, updated, entrada_id, fecha_tipo
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                f"EXP-{index}", "", "B32430316", "CAMINOS DE OURENSE", "Diputación de Ourense",
+                canon("Diputación de Ourense"), "", "", "", f"2019-03-{index + 1:02d}", 2019, 39669.42,
+                "6", "Contrato menor", 1, 1, 0, "Obra menor", "https://example.test/a", "menores", "", "", "adjudicacion",
+            ),
+        )
+    probe.execute(
+        """
+        INSERT INTO placsp_contrato (
+          expediente, lote, nif, adjudicatario, organo, organo_canon, dir3, padres, tipo_poder,
+          fecha, anio, importe, procedimiento, procedimiento_nombre, menor, sin_concurrencia,
+          emergencia, titulo, url, fuente, updated, entrada_id, fecha_tipo
+        ) VALUES ('PEQUE', '', 'B32430316', 'CAMINOS DE OURENSE', 'Diputación de Ourense', ?, '', '', '',
+                  '2019-04-01', 2019, 1000, '6', 'Contrato menor', 1, 1, 0, 'Suministro', '', 'menores', '', '', 'adjudicacion')
+        """,
+        (canon("Diputación de Ourense"),),
+    )
+    found = build_menor_umbral(probe)
+    assert found == 1
+    stored = probe.execute(
+        "SELECT nif, n_contratos, umbral_codigo, puntuacion FROM alert_contrato WHERE nivel = 'menor_umbral'"
+    ).fetchone()
+    assert stored[0] == "B32430316"
+    assert stored[1] == 6
+    assert stored[2] == "obra"
+    assert stored[3] >= 20
+    piezas = probe.execute("SELECT COUNT(*) FROM alert_contrato_pieza").fetchone()[0]
+    assert piezas == 6
+    probe.close()
     log("Autocomprobación del cruce con la PLACSP correcta.")
 
 
@@ -1863,6 +2305,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--self-check", action="store_true")
     parser.add_argument("--rebuild", action="store_true", help="Borra las tablas PLACSP y las vuelve a calcular")
     parser.add_argument("--alerts-only", action="store_true", help="Solo rehace los indicadores a partir de los contratos ya guardados")
+    parser.add_argument(
+        "--menor-umbral",
+        action="store_true",
+        help="Solo recalcula los contratos menores repetidos bajo el umbral, sin bajar ZIP ni rehacer el resto de cruces",
+    )
     parser.add_argument("--keep-raw", action="store_true", help="No borra los ZIP tras leerlos")
     parser.add_argument("--years", default=f"{YEAR_MIN}-{YEAR_MAX}", help="2018-2022 o una lista 2018,2019")
     parser.add_argument("--feeds", default="perfiles,menores,agregadas")
@@ -1886,13 +2333,16 @@ def main(argv: list[str]) -> None:
     started = time.time()
     connection = connect()
     try:
-        if args.rebuild and not args.alerts_only:
-            log("Borrando tablas PLACSP anteriores")
-            drop_placsp(connection)
-            connection.commit()
-        if not args.alerts_only:
-            ingest(connection, years, feeds, args.keep_raw)
-        rebuild_alerts(connection)
+        if args.menor_umbral:
+            build_menor_umbral(connection)
+        else:
+            if args.rebuild and not args.alerts_only:
+                log("Borrando tablas PLACSP anteriores")
+                drop_placsp(connection)
+                connection.commit()
+            if not args.alerts_only:
+                ingest(connection, years, feeds, args.keep_raw)
+            rebuild_alerts(connection)
     finally:
         connection.close()
     log(f"Hecho en {time.time() - started:.0f} s")

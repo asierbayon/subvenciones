@@ -38,7 +38,7 @@ const signals = [
   {
     href: "/alertas/contratos",
     title: "Contratos públicos",
-    text: "El mismo NIF cobra una ayuda y se adjudica un contrato del mismo organismo, o de la misma administración si el contrato es menor o no salió a convocatoria abierta.",
+    text: "El mismo NIF cobra una ayuda y se adjudica un contrato del mismo organismo, o acumula contratos menores repetidos justo por debajo del umbral de la LCSP.",
     table: "alert_contrato",
   },
   {

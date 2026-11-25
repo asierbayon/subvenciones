@@ -221,7 +221,13 @@ El indicador salta, dentro de 180 días, en este orden:
 
 Un padre de una sola palabra («Toledo», «Murcia») no se toma como órgano: en la jerarquía es la provincia, y casaría con todos los municipios. Valencia y Valencia de Don Juan tampoco se mezclan, porque el topónimo se compara entero.
 
-La pantalla lo etiqueta como indicador. Cada ficha dice qué regla ha saltado, enlaza las concesiones y el anuncio de la PLACSP, y se puede filtrar por territorio, año de adjudicación y organismo. No están los contratos menores de las plataformas autonómicas: el canal agregado los excluye y el de menores solo cubre perfiles alojados en la PLACSP.
+La pantalla lo etiqueta como indicador. Cada ficha dice qué regla ha saltado, enlaza las concesiones y el anuncio de la PLACSP, y se puede filtrar por territorio, año de adjudicación y organismo.
+
+Hay un segundo indicador, `menor_umbral`, que no cruza con una subvención. Agrupa contratos menores del mismo órgano de contratación y del mismo adjudicatario cuyo importe sin IVA cae en el 90–100 % del tope del contrato menor: 40.000 € en obras y 15.000 € en servicios o suministros. Hace falta al menos cinco anuncios en esa banda. La puntuación sube con el número, con la cuota de un importe idéntico (por ejemplo 295 menores a 39.669,42 €) y con la cercanía al tope. Se guarda en `alert_contrato` con nivel `menor_umbral` y una muestra de anuncios en `alert_contrato_pieza`. No vuelve a descargar la PLACSP:
+
+```bash
+python3 pipeline/contratos.py --menor-umbral
+``` No están los contratos menores de las plataformas autonómicas: el canal agregado los excluye y el de menores solo cubre perfiles alojados en la PLACSP.
 
 Sobre este índice (concesiones a personas jurídicas, 2018–marzo de 2022) la pasada leyó 3.986.699 anuncios y guardó 1.202.741 adjudicaciones de 94.653 NIF, el 10,6 % de los 894.548 beneficiarios con NIF. De 2.324 organismos que conceden a alguien con NIF, 677 (29,1 %) tienen el mismo nombre normalizado que un órgano de la PLACSP y 211 (9,1 %) apuntan a un único DIR3; 14 nombres son ambiguos. Salen 31.995 indicadores: 7.386 del mismo órgano, 1.060 de la jerarquía y 23.549 de la misma administración (estos solo si el contrato es menor o no salió a convocatoria abierta). 27.711 son contratos menores.
 
@@ -313,7 +319,7 @@ El cruce con contratos públicos, si se quiere, va después y no toca el resto d
 pnpm contratos
 ```
 
-Equivale a `python3 pipeline/contratos.py`. `--years 2018-2022`, `--feeds perfiles,menores,agregadas`, `--keep-raw`, `--alerts-only` y `--rebuild` están en el propio script. La autocomprobación, sin red y sin base de datos:
+Equivale a `python3 pipeline/contratos.py`. `--years 2018-2022`, `--feeds perfiles,menores,agregadas`, `--keep-raw`, `--alerts-only`, `--menor-umbral` y `--rebuild` están en el propio script. `--menor-umbral` solo recalcula los menores repetidos bajo el tope a partir de `placsp_contrato`. `--alerts-only` rehace todos los indicadores de contratos, también ese, sin volver a bajar los ZIP. La autocomprobación, sin red y sin base de datos:
 
 ```bash
 python3 pipeline/contratos.py --self-check
