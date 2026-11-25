@@ -247,6 +247,8 @@ python3 pipeline/vinculos.py --self-check
 
 Solo se publica una coincidencia si la confianza llega a 0,85. Hace falta el nombre y los dos apellidos (o un solo apellido largo y poco común), que el nombre no esté en tres o más órganos, que la subvención caiga dentro del mandato y del cargo societario, y que el órgano que concede sea el del cargo: el municipio del concejal o del alcalde, el cabildo del consejero insular, el parlamento del diputado autonómico, o el departamento del alto cargo. Un apoderado baja la nota. Si el nombramiento societario no trae fechas, también. Por debajo del umbral no se guarda la fila.
 
+Quedan fuera las sociedades públicas, municipales o mixtas en las que el concejal está por razón del cargo. Se descarta el NIF si empieza por P, Q, S o R; si el socio único inscrito en el BORME es una administración; o si el NIF es A o B y el nombre lleva MUNICIPAL, PÚBLICA, SOCIEDAD MIXTA, EMPRESA MUNICIPAL, PATRONATO, AYUNTAMIENTO, DIPUTACIÓN o el nombre del municipio del cargo junto a una actividad típica de empresa municipal (deporte, turismo, cultura, vivienda, puerto, club de campo). Así salen «Pública de Desarrollo Municipal de Altea», «Logroño Deporte», «Club de Campo Villa de Madrid», «Cartagena Puerto de Culturas» o «Turismo de Valladolid». Volver a lanzar `python3 pipeline/vinculos.py` rehace solo este indicador: no descarga el censo de cargos ni el BORME.
+
 En la ingesta de noviembre de 2026 la tabla `politico` quedó en unas 152.000 filas, unos 63 MB:
 
 | Fuente | Qué entra | Cobertura en ese cruce |
