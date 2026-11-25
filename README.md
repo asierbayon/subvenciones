@@ -295,7 +295,7 @@ El indicador es solo eso. Un homónimo con los mismos apellidos puede no ser el 
 python3 pipeline/puertas_giratorias.py
 ```
 
-Puertas giratorias es otro indicador, en `pipeline/puertas_giratorias.py`, y no toca las tablas de vínculos. Lee el índice, `data/politicos.sqlite` y el extracto `data/borme/borme.sqlite` que todavía tenga la tabla `acto` (la fecha de cada anuncio). Si ese extracto se compactó y se borró `acto`, no hay fecha de nombramiento y el comando se detiene: no vuelve a bajar el BORME ni reconstruye la base. `pnpm puertas` es el mismo comando.
+Puertas giratorias es otro indicador, en `pipeline/puertas_giratorias.py`, y no toca las tablas de vínculos. Lee el índice, `data/politicos.sqlite` y `persona_cargo` en `data/borme/borme.sqlite`. Esa tabla la escribe `aggregate` y sobrevive a `--compact`, junto con `cierre` en `sociedad`. Si el extracto se compactó con una versión anterior, no hay fechas y el comando se detiene: hay que volver a bajar el BORME. `pnpm puertas` es el mismo comando.
 
 El patrón es otro que el de vínculos. Allí el cargo y el puesto en la sociedad se solapan. Aquí la persona deja el órgano y, como muy tarde cuatro años después, el BORME la publica como administrador o consejero de una sociedad que ya cobró de ese órgano. Un subtipo aparte, `durante`, guarda el nombramiento que cae todavía en el mandato: es el solape, no la puerta de después, y pide una puntuación más alta.
 
@@ -304,11 +304,22 @@ Los ceses son supuestos, y la ficha lo dice:
 - Un cargo de 2015 que no está en el fichero de 2019 se da por terminado el 14 jun 2019. La fecha de concejal es la del mandato, no la dimisión. Una baja de alcalde anterior solo se usa si no queda una concejalía en ese municipio con fecha posterior.
 - No hay electos de 2023. Todo cargo del mandato 2019-2023 se trata como cesado el 16 jun 2023, aunque esa persona repitiera escaño.
 
-La fecha societaria es la primera publicación del extracto en la que ese nombre figura con un cargo de administración en esa hoja. El extracto no separa nombramientos de ceses, no guarda apoderados y usa el día del boletín, no el de la inscripción. Quien ya era administrador antes de tomar posesión no entra. Tampoco entran las sociedades cuyo nombre dice municipal, pública, sociedad mixta, patronato o ayuntamiento, ni los NIF que empiezan por P, Q o S. El cruce de la sociedad tiene que ser de confianza alta o media. El nombre que está en tres o más órganos, o en más de doce sociedades, se tira. El dinero son subvenciones dinerarias y, si se ha corrido el paso de contratos, adjudicaciones de la PLACSP, del mismo municipio, de una mancomunidad que lo nombra, de la isla o de la diputación, con fecha no posterior al anuncio. Lo cobrado dentro del mandato pesa más que lo cobrado solo en el hueco entre el cese y el nombramiento. Una sociedad pequeña pesa más que una grande.
+La fecha societaria sale de `persona_cargo`: el primer nombramiento (o reelección, si no hubo nombramiento) y, si existe, uno posterior. Un cese no se toma como nombramiento. No se guarda cada anuncio intermedio, ni los apoderados, y el día es el del boletín, no el de la inscripción. Si el alta es anterior al cargo y hay otra fecha después del cese, se usa esa. Quien ya era administrador y no vuelve a ser nombrado no entra. Tampoco entran las sociedades cuyo nombre dice municipal, pública, sociedad mixta, patronato o ayuntamiento, ni los NIF que empiezan por P, Q o S. El cruce de la sociedad tiene que ser de confianza alta o media. El nombre que está en tres o más órganos, o en más de doce sociedades, se tira. El dinero son subvenciones dinerarias y, si se ha corrido el paso de contratos, adjudicaciones de la PLACSP, del mismo municipio, de una mancomunidad que lo nombra, de la isla o de la diputación, con fecha no posterior al anuncio. Lo cobrado dentro del mandato pesa más que lo cobrado solo en el hueco entre el cese y el nombramiento. Una sociedad pequeña pesa más que una grande.
 
 La pantalla está en `/alertas/puertas-giratorias`. Cada ficha es un indicio, no una prueba.
 
-En un servidor de 2 GB el comando no junta las tablas en memoria: recorre el BORME, se queda con la primera fecha de cada persona y sociedad, y agrega las ayudas en SQLite. Orientativamente, el pase completo de 2016-2023 son 20-50 minutos y 400-800 MB de residente. `--limit N` lee solo los primeros N actos con personas, en el orden del fichero, y marca la tabla como parcial.
+En un servidor de 2 GB el comando no junta las tablas en memoria: recorre `persona_cargo` y agrega las ayudas en SQLite. Orientativamente, el pase completo son 20-50 minutos y 400-800 MB de residente. `--limit N` lee solo las primeras N filas de `persona_cargo` y marca la tabla como parcial.
+
+Un extracto compactado antes de `persona_cargo` se rehace así. `fetch` no repite un día cuyos anuncios siguen en `acto`. Si `acto` se borró y `borme_doc` recuerda que ese día tenía sociedades, lo vuelve a pedir; si el proceso se corta, lo ya reescrito no se repite. Hacen falta unos 12 GB libres: `acto` vuelve a crecer y el `VACUUM` copia el fichero. Con 2 GB de RAM conviene bajar en paralelo de dos, no de cuatro.
+
+```bash
+python3 pipeline/borme.py fetch --workers 2
+python3 pipeline/borme.py aggregate --compact
+python3 pipeline/borme.py alerts
+python3 pipeline/puertas_giratorias.py
+```
+
+La descarga de 2016-2023 son unas 10 horas. Agregar y compactar, del orden de una hora. `alerts` rehace los indicadores de sociedad con el `cierre` nuevo y no vuelve a emparejar todos los nombres. `persona_cargo` cabe por debajo de 500 MB.
 
 ```bash
 python3 pipeline/boe_altos.py --from 2018-01-01 --to 2023-12-31
