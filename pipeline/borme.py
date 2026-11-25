@@ -211,6 +211,10 @@ ROLE_RE = re.compile(
     r"Presidente|Vicepresid\.|Dir\.\s*General|Socio\s+[ÚúUu]nico"
     r")\s*:\s*"
 )
+# Longer labels first so "Ceses/Dimisiones" is not read as "Ceses".
+ACTION_RE = re.compile(
+    r"(?:^|\.\s+)(Reelecciones|Nombramientos|Ceses/Dimisiones|Ceses|Dimisiones|Revocaciones)\b"
+)
 MONEY_RE = re.compile(
     r"(Resultante\s+Suscrito|Capital\s+suscrito|Capital)\s*:\s*(\d[\d.]*)(?:\s*,\s*(\d{1,2}))?\s*Euros",
     re.IGNORECASE,
@@ -476,11 +480,20 @@ def persona_identity(name: str) -> tuple[str, str]:
     return folded, "P"
 
 
-def people_from(text: str) -> list[tuple[str, str, str, str]]:
-    """Return (rol A/S, display name, key, kind P/E) for directors and sole shareholders."""
+def accion_de(label: str) -> str:
+    folded = fold(label)
+    if folded.startswith("REELECC"):
+        return "reeleccion"
+    if folded.startswith("CES") or folded.startswith("DIMIS") or folded.startswith("REVOC"):
+        return "cese"
+    return "nombramiento"
+
+
+def people_in_span(text: str, accion: str, limit: int) -> list[tuple[str, str, str, str, str]]:
+    """People under one heading. ``accion`` is nombramiento, cese or reeleccion."""
     matches = list(ROLE_RE.finditer(text or ""))
-    found: list[tuple[str, str, str, str]] = []
-    seen: set[tuple[str, str]] = set()
+    found: list[tuple[str, str, str, str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
     for index, match in enumerate(matches):
         start = match.end()
         end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
@@ -495,27 +508,70 @@ def people_from(text: str) -> list[tuple[str, str, str, str]]:
             key, kind = persona_identity(display)
             if not key:
                 continue
-            marker = (rol, key)
+            marker = (accion, rol, key)
             if marker in seen:
                 continue
             seen.add(marker)
-            found.append((rol, display, key, kind))
+            found.append((rol, display, key, kind, accion))
+            if len(found) >= limit:
+                return found
+    return found
+
+
+def people_from(text: str) -> list[tuple[str, str, str, str, str]]:
+    """Return (rol A/S, display name, key, kind P/E, accion) for directors and sole shareholders.
+
+    ``accion`` is nombramiento, cese or reeleccion, taken from the heading
+    (Nombramientos, Ceses/Dimisiones, Reelecciones). A role before any heading
+    counts as a nombramiento. The same person can be both dismissed and appointed.
+    """
+    body = text or ""
+    marks = list(ACTION_RE.finditer(body))
+    spans: list[tuple[str, str]] = []
+    if not marks:
+        spans.append(("nombramiento", body))
+    else:
+        if marks[0].start() > 0:
+            spans.append(("nombramiento", body[: marks[0].start()]))
+        for index, mark in enumerate(marks):
+            end = marks[index + 1].start() if index + 1 < len(marks) else len(body)
+            spans.append((accion_de(mark.group(1)), body[mark.end() : end]))
+    found: list[tuple[str, str, str, str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for accion, span in spans:
+        for person in people_in_span(span, accion, 12 - len(found)):
+            marker = (person[4], person[0], person[2])
+            if marker in seen:
+                continue
+            seen.add(marker)
+            found.append(person)
             if len(found) >= 12:
                 return found
     return found
 
 
-def encode_people(people: list[tuple[str, str, str, str]]) -> str:
-    return "\n".join(f"{rol}\t{name}\t{key}\t{kind}" for rol, name, key, kind in people)
+def encode_people(people: list[tuple]) -> str:
+    lines: list[str] = []
+    for item in people:
+        if len(item) == 4:
+            rol, name, key, kind = item
+            accion = "nombramiento"
+        else:
+            rol, name, key, kind, accion = item
+        lines.append(f"{rol}\t{name}\t{key}\t{kind}\t{accion}")
+    return "\n".join(lines)
 
 
-def decode_people(blob: str) -> list[tuple[str, str, str, str]]:
-    rows: list[tuple[str, str, str, str]] = []
+def decode_people(blob: str) -> list[tuple[str, str, str, str, str]]:
+    """Five fields. Older rows without ``accion`` are read as a nombramiento."""
+    rows: list[tuple[str, str, str, str, str]] = []
     for line in (blob or "").split("\n"):
         parts = line.split("\t")
-        if len(parts) != 4:
+        if len(parts) == 4:
+            rows.append((parts[0], parts[1], parts[2], parts[3], "nombramiento"))
             continue
-        rows.append((parts[0], parts[1], parts[2], parts[3]))
+        if len(parts) == 5:
+            rows.append((parts[0], parts[1], parts[2], parts[3], parts[4] or "nombramiento"))
     return rows
 
 
@@ -732,7 +788,19 @@ def self_check() -> None:
         "Nombramientos. Adm. Unico: GRENERGY RENOVABLES SA. Consejero: BOVEDA DAMBORENEA JAVIER. "
         "Cons.Del.Man: BOVEDA DAMBORENEA JAVIER. Socio único: LOMBARDERO PEREZ DELIO."
     )
-    keys = {(rol, key) for rol, _name, key, _kind in people}
+    keys = {(rol, key) for rol, _name, key, _kind, _accion in people}
+    acciones = {key: accion for _rol, _name, key, _kind, accion in people}
+    assert acciones["GRENERGY RENOVABLES"] == "nombramiento"
+    assert acciones["LOMBARDERO PEREZ DELIO"] == "nombramiento"
+    separated = people_from(
+        "Ceses/Dimisiones. Adm. Unico: LOPEZ RUIZ MARIA. "
+        "Nombramientos. Adm. Unico: PEREZ GARCIA JUAN. "
+        "Reelecciones. Consejero: SANZ DIEGO OLMO."
+    )
+    by_person = {key: accion for _rol, _name, key, _kind, accion in separated}
+    assert by_person["LOPEZ RUIZ MARIA"] == "cese"
+    assert by_person["PEREZ GARCIA JUAN"] == "nombramiento"
+    assert by_person["SANZ DIEGO OLMO"] == "reeleccion"
     assert ("A", "GRENERGY RENOVABLES") in keys
     assert ("A", "BOVEDA DAMBORENEA JAVIER") in keys
     assert ("S", "LOMBARDERO PEREZ DELIO") in keys
@@ -840,7 +908,7 @@ def reduce_acts(acts: list[Acto]) -> dict:
             domicilio = act.domicilio
             domicilio_norm = act.domicilio_key
             fuente_dom = act.cve
-        for rol, name, key, kind in decode_people(act.personas):
+        for rol, name, key, kind, _accion in decode_people(act.personas):
             people.setdefault((rol, key), (name, kind))
     if len(capitals) > 8:
         capitals = capitals[:4] + capitals[-4:]
