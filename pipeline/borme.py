@@ -2664,6 +2664,7 @@ def copy_cierre(connection: sqlite3.Connection) -> None:
             """
         )
     finally:
+        connection.commit()
         connection.execute("DETACH DATABASE borme")
 
 
