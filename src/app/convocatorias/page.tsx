@@ -10,13 +10,16 @@ import { parseFilters, type SearchParams } from "@/lib/params";
 import { ContratosPublicos } from "@/components/contratos-publicos";
 import { getFacets, searchConvocatorias, type Convocatoria } from "@/lib/queries";
 
+const linkClass =
+  "font-medium text-accent underline decoration-accent/30 underline-offset-4 transition-colors hover:text-accent-strong hover:decoration-accent";
+
 const columns: Column<Convocatoria>[] = [
   {
     id: "titulo",
     header: "Convocatoria",
     sortKey: "titulo",
     cell: (row) => (
-      <Link href={`/convocatorias/${row.codigoBdns}`} className="xp-link">
+      <Link href={`/convocatorias/${row.codigoBdns}`} className={linkClass}>
         {row.titulo}
       </Link>
     ),
@@ -25,7 +28,7 @@ const columns: Column<Convocatoria>[] = [
     id: "fecha",
     header: "Registro",
     sortKey: "fecha",
-    cell: (row) => formatDate(row.fecha),
+    cell: (row) => <span className="whitespace-nowrap text-muted">{formatDate(row.fecha)}</span>,
   },
   {
     id: "organismo",
@@ -36,7 +39,7 @@ const columns: Column<Convocatoria>[] = [
   {
     id: "territorio",
     header: "Territorio",
-    cell: (row) => row.ccaa,
+    cell: (row) => <span className="text-muted">{row.ccaa}</span>,
   },
   {
     id: "sector",
@@ -55,7 +58,7 @@ const columns: Column<Convocatoria>[] = [
     header: "Importe",
     sortKey: "importe",
     align: "right",
-    cell: (row) => formatEuro(row.importeTotal),
+    cell: (row) => <span className="font-semibold">{formatEuro(row.importeTotal)}</span>,
   },
 ];
 

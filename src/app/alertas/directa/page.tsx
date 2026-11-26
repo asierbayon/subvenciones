@@ -6,6 +6,9 @@ import { listDirecta, parseAlertFilters, type AlertSearch } from "@/lib/alerts";
 import { DatabaseMissingError, guard } from "@/lib/db";
 import { formatNumber } from "@/lib/format";
 
+const linkClass =
+  "font-medium text-accent underline decoration-accent/30 underline-offset-4 transition-colors hover:text-accent-strong hover:decoration-accent";
+
 const DirectaPage = async ({ searchParams }: { searchParams: Promise<AlertSearch> }) => {
   const filters = parseAlertFilters(await searchParams);
   const loaded = await guard(async () => {
@@ -29,7 +32,11 @@ const DirectaPage = async ({ searchParams }: { searchParams: Promise<AlertSearch
     return (
       <PageIntro eyebrow="Concesión directa" title="Falta calcular este indicador">
         <p>
-          Ejecuta <code>python3 pipeline/alerts.py directa</code>.
+          Ejecuta{" "}
+          <code className="rounded bg-subtle px-1.5 py-0.5 font-mono text-xs text-ink">
+            python3 pipeline/alerts.py directa
+          </code>
+          .
         </p>
       </PageIntro>
     );
@@ -59,32 +66,36 @@ const DirectaPage = async ({ searchParams }: { searchParams: Promise<AlertSearch
       {loaded.rows.length === 0 ? (
         <EmptyState>Ningún organismo con estos filtros.</EmptyState>
       ) : (
-        <div className="xp-table-frame">
-          <table className="xp-table">
-            <caption className="sr-only">Organismos ordenados por la cuota de títulos que mencionan concesión directa o nominativa</caption>
+        <div className="overflow-x-auto rounded-xl border border-line bg-elev shadow-2xs">
+          <table className="w-full border-collapse text-sm">
+            <caption className="sr-only">
+              Organismos ordenados por la cuota de títulos que mencionan concesión directa o nominativa
+            </caption>
             <thead>
-              <tr>
-                <th scope="col" className="px-3 py-2">Organismo</th>
-                <th scope="col" className="px-3 py-2">Territorio</th>
-                <th scope="col" className="px-3 py-2 text-right">Cuota del título</th>
-                <th scope="col" className="px-3 py-2 text-right">Directa</th>
-                <th scope="col" className="px-3 py-2 text-right">Nominativa</th>
-                <th scope="col" className="px-3 py-2 text-right">Concesiones</th>
+              <tr className="border-b border-line bg-subtle/70 text-left text-xs font-semibold tracking-wider text-muted uppercase">
+                <th scope="col" className="px-4 py-3">Organismo</th>
+                <th scope="col" className="px-4 py-3">Territorio</th>
+                <th scope="col" className="px-4 py-3 text-right">Cuota del título</th>
+                <th scope="col" className="px-4 py-3 text-right">Directa</th>
+                <th scope="col" className="px-4 py-3 text-right">Nominativa</th>
+                <th scope="col" className="px-4 py-3 text-right">Concesiones</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-line">
               {loaded.rows.map((row) => (
-                <tr key={row.id} className="border-t border-line">
-                  <th scope="row" className="px-3 py-2 text-left font-semibold">
-                    <Link href={`/concesiones?organismo=${encodeURIComponent(row.organismo)}`} className="xp-link font-normal">
+                <tr key={row.id} className="transition-colors hover:bg-highlight/60">
+                  <th scope="row" className="px-4 py-3 text-left font-medium">
+                    <Link href={`/concesiones?organismo=${encodeURIComponent(row.organismo)}`} className={linkClass}>
                       {row.organismo}
                     </Link>
                   </th>
-                  <td className="px-3 py-2">{row.ccaa}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{(row.cuota * 100).toLocaleString("es-ES", { maximumFractionDigits: 1 })} %</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.nDirecta)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.nNominativa)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.n)}</td>
+                  <td className="px-4 py-3 text-muted">{row.ccaa}</td>
+                  <td className="px-4 py-3 text-right font-semibold tabular-nums">
+                    {(row.cuota * 100).toLocaleString("es-ES", { maximumFractionDigits: 1 })} %
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums text-muted">{formatNumber(row.nDirecta)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-muted">{formatNumber(row.nNominativa)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-muted">{formatNumber(row.n)}</td>
                 </tr>
               ))}
             </tbody>

@@ -1,17 +1,16 @@
-const WarningIcon = () => (
-  <svg className="xp-icon" viewBox="0 0 32 32" aria-hidden="true">
-    <path d="M16 2.5 30.5 29H1.5Z" fill="#ffd200" stroke="#000" strokeWidth="1.4" />
-    <rect x="14.6" y="12" width="2.8" height="8" fill="#000" />
-    <rect x="14.6" y="22" width="2.8" height="2.8" fill="#000" />
-  </svg>
-);
+import { AlertTriangle } from "lucide-react";
 
 export const AlertBanner = ({ children }: { children: React.ReactNode }) => (
-  <div className="xp-balloon" role="note">
-    <WarningIcon />
-    <div>
-      <p className="xp-balloon-title">Indicador, no prueba</p>
-      <p>{children}</p>
+  <div
+    className="mb-6 flex items-start gap-3.5 rounded-xl border border-terra-border bg-terra-soft px-4 py-3.5 text-sm text-ink shadow-2xs"
+    role="note"
+  >
+    <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-terra/15 text-terra">
+      <AlertTriangle aria-hidden="true" size={16} />
+    </span>
+    <div className="min-w-0 leading-relaxed">
+      <p className="font-semibold text-terra">Indicador, no prueba</p>
+      <p className="mt-0.5 text-ink/90">{children}</p>
     </div>
   </div>
 );

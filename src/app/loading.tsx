@@ -1,10 +1,10 @@
 const Loading = () => (
-  <p className="xp-loading" role="status">
-    <span>Cargando datos…</span>
-    <span className="xp-progress xp-progress-busy" aria-hidden="true">
-      <span />
+  <div className="mx-auto my-12 flex max-w-xs flex-col items-center gap-3 text-center" role="status">
+    <span className="text-sm font-medium text-muted">Cargando datos…</span>
+    <span className="h-1.5 w-full overflow-hidden rounded-full bg-subtle" aria-hidden="true">
+      <span className="loading-bar-fill block h-full rounded-full bg-accent" />
     </span>
-  </p>
+  </div>
 );
 
 export default Loading;

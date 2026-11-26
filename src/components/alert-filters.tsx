@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { alertQuery, type AlertFilters } from "@/lib/alerts";
@@ -14,81 +15,92 @@ type AlertFilterFormProps = {
   tipos?: { value: string; label: string }[];
 };
 
+const pagerButtonClass =
+  "inline-flex h-9 items-center gap-1.5 rounded-lg border border-line-strong bg-elev px-3 text-sm font-medium text-ink transition-colors hover:bg-highlight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40";
+
+const pagerDisabledClass =
+  "inline-flex h-9 items-center gap-1.5 rounded-lg border border-line bg-subtle/60 px-3 text-sm font-medium text-muted/60 cursor-not-allowed";
+
 export const AlertFilterForm = ({ action, filters, ccaa, anios, organismos, tipos }: AlertFilterFormProps) => {
   const territorios = [...ccaa].sort(compareCcaa);
   return (
-    <form action={action} method="get" className="mb-4">
-      <fieldset className="xp-group">
-      <legend>Filtros</legend>
-      <div className={tipos ? "grid gap-3 md:grid-cols-4" : "grid gap-3 md:grid-cols-3"}>
-        <div className="xp-field">
-          <label htmlFor="alerta-ccaa">
-            Territorio
-          </label>
-          <Select id="alerta-ccaa" name="ccaa" defaultValue={filters.ccaa}>
-            <option value="">Cualquier territorio</option>
-            {territorios.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </Select>
-        </div>
-        {anios.length > 0 ? (
-          <div className="xp-field">
-            <label htmlFor="alerta-anio">
-              Año
+    <form action={action} method="get" className="mb-6">
+      <fieldset className="rounded-xl border border-line bg-elev p-5 shadow-2xs">
+        <legend className="px-1.5 text-xs font-semibold tracking-wider text-muted uppercase">
+          Filtros
+        </legend>
+        <div className={tipos ? "mt-2 grid gap-4 md:grid-cols-4" : "mt-2 grid gap-4 md:grid-cols-3"}>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="alerta-ccaa" className="text-xs font-medium text-muted">
+              Territorio
             </label>
-            <Select id="alerta-anio" name="anio" defaultValue={filters.anio}>
-              <option value="">Cualquier año</option>
-              {anios.map((year) => (
-                <option key={year} value={year}>
-                  {year}
+            <Select id="alerta-ccaa" name="ccaa" defaultValue={filters.ccaa}>
+              <option value="">Cualquier territorio</option>
+              {territorios.map((item) => (
+                <option key={item} value={item}>
+                  {item}
                 </option>
               ))}
             </Select>
           </div>
-        ) : null}
-        <div className="xp-field">
-          <label htmlFor="alerta-organismo">
-            Organismo
-          </label>
-          <Input
-            id="alerta-organismo"
-            name="organismo"
-            list="alerta-organismos"
-            defaultValue={filters.organismo}
-            placeholder="Empieza a escribir el nombre"
-            autoComplete="off"
-          />
-        </div>
-        {tipos ? (
-          <div className="xp-field">
-            <label htmlFor="alerta-tipo">
-              Señal
+          {anios.length > 0 ? (
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="alerta-anio" className="text-xs font-medium text-muted">
+                Año
+              </label>
+              <Select id="alerta-anio" name="anio" defaultValue={filters.anio}>
+                <option value="">Cualquier año</option>
+                {anios.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          ) : null}
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="alerta-organismo" className="text-xs font-medium text-muted">
+              Organismo
             </label>
-            <Select id="alerta-tipo" name="tipo" defaultValue={filters.tipo}>
-              <option value="">Cualquier señal</option>
-              {tipos.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </Select>
+            <Input
+              id="alerta-organismo"
+              name="organismo"
+              list="alerta-organismos"
+              defaultValue={filters.organismo}
+              placeholder="Empieza a escribir el nombre"
+              autoComplete="off"
+            />
           </div>
-        ) : null}
-      </div>
-      <datalist id="alerta-organismos">
-        {organismos.map((nombre) => (
-          <option key={nombre} value={nombre} />
-        ))}
-      </datalist>
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <Button type="submit">Aplicar filtros</Button>
-        <a href={action} className="xp-link font-normal">
-          Limpiar
-        </a>
-      </div>
+          {tipos ? (
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="alerta-tipo" className="text-xs font-medium text-muted">
+                Señal
+              </label>
+              <Select id="alerta-tipo" name="tipo" defaultValue={filters.tipo}>
+                <option value="">Cualquier señal</option>
+                {tipos.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          ) : null}
+        </div>
+        <datalist id="alerta-organismos">
+          {organismos.map((nombre) => (
+            <option key={nombre} value={nombre} />
+          ))}
+        </datalist>
+        <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-line pt-4">
+          <Button type="submit">Aplicar filtros</Button>
+          <a
+            href={action}
+            className="inline-flex h-9 items-center rounded-lg px-3 text-sm font-medium text-muted transition-colors hover:bg-highlight hover:text-ink"
+          >
+            Limpiar
+          </a>
+        </div>
       </fieldset>
     </form>
   );
@@ -116,27 +128,38 @@ export const AlertPager = ({
   const previousHref = page > 1 ? `${path}${alertQuery(filters, previousPatch)}` : null;
   const nextHref = page < pages ? `${path}${alertQuery(filters, nextPatch)}` : null;
   return (
-    <nav aria-label="Paginación de alertas" className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <p className="text-sm text-muted">
-        {formatNumber(from)}–{formatNumber(to)} de {formatNumber(total)}
+    <nav
+      aria-label="Paginación de alertas"
+      className="mt-6 flex flex-col gap-3 border-t border-line pt-4 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <p className="text-sm text-muted tabular-nums">
+        Mostrando {formatNumber(from)}–{formatNumber(to)} de {formatNumber(total)}
       </p>
-      <div className="flex gap-2">
+      <div className="flex items-center gap-2">
         {previousHref ? (
-          <Link href={previousHref} className="xp-button">
+          <Link href={previousHref} className={pagerButtonClass}>
+            <ChevronLeft aria-hidden="true" size={15} />
             Anterior
           </Link>
         ) : (
-          <span className="xp-button" aria-disabled="true">Anterior</span>
+          <span className={pagerDisabledClass} aria-disabled="true">
+            <ChevronLeft aria-hidden="true" size={15} />
+            Anterior
+          </span>
         )}
-        <span className="px-2 py-2 text-sm text-muted">
+        <span className="px-2.5 text-sm font-medium text-muted tabular-nums">
           {formatNumber(page)} / {formatNumber(pages)}
         </span>
         {nextHref ? (
-          <Link href={nextHref} className="xp-button">
+          <Link href={nextHref} className={pagerButtonClass}>
             Siguiente
+            <ChevronRight aria-hidden="true" size={15} />
           </Link>
         ) : (
-          <span className="xp-button" aria-disabled="true">Siguiente</span>
+          <span className={pagerDisabledClass} aria-disabled="true">
+            Siguiente
+            <ChevronRight aria-hidden="true" size={15} />
+          </span>
         )}
       </div>
     </nav>

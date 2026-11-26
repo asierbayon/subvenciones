@@ -14,6 +14,9 @@ import {
   type AlertSearch,
 } from "@/lib/registro";
 
+const linkClass =
+  "font-medium text-accent underline decoration-accent/30 underline-offset-4 transition-colors hover:text-accent-strong hover:decoration-accent";
+
 const VinculosPage = async ({ searchParams }: { searchParams: Promise<AlertSearch> }) => {
   const filters = parseAlertFilters(await searchParams);
   const loaded = await guard(async () => {
@@ -37,8 +40,11 @@ const VinculosPage = async ({ searchParams }: { searchParams: Promise<AlertSearc
     return (
       <PageIntro eyebrow="Registro mercantil" title="Falta calcular este indicador">
         <p>
-          Ejecuta <code>python3 pipeline/borme.py run</code>. Hace falta el índice de concesiones y el extracto del
-          BORME. El paso es opcional.
+          Ejecuta{" "}
+          <code className="rounded bg-subtle px-1.5 py-0.5 font-mono text-xs text-ink">
+            python3 pipeline/borme.py run
+          </code>
+          . Hace falta el índice de concesiones y el extracto del BORME. El paso es opcional.
         </p>
       </PageIntro>
     );
@@ -70,36 +76,37 @@ const VinculosPage = async ({ searchParams }: { searchParams: Promise<AlertSearc
       ) : (
         <ol className="grid gap-4">
           {loaded.alerts.map((alert) => (
-            <li key={alert.id} className="xp-card">
+            <li key={alert.id} className="rounded-xl border border-line bg-elev p-5 shadow-2xs">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="xp-heading">{alert.etiqueta}</h2>
-                <p className="text-sm font-semibold tabular-nums">{formatEuro(alert.importe)}</p>
+                <h2 className="font-display text-base font-semibold text-ink">{alert.etiqueta}</h2>
+                <p className="text-sm font-semibold text-ink tabular-nums">{formatEuro(alert.importe)}</p>
               </div>
-              <p className="mt-1 text-sm text-muted">
-                {alert.organismo} · {alert.ccaa} · {alert.anio || "sin año"} · {formatNumber(alert.nBeneficiarios)} sociedades
+              <p className="mt-1 text-xs text-muted sm:text-sm">
+                {alert.organismo} · {alert.ccaa} · {alert.anio || "sin año"} · {formatNumber(alert.nBeneficiarios)}{" "}
+                sociedades
               </p>
               <div className="mt-3">
                 <Badge tone="terra">{vinculoLabel(alert.tipo)}</Badge>
               </div>
-              <p className="mt-3 text-sm leading-relaxed">{alert.motivo}</p>
-              <ul className="mt-3 grid gap-3">
+              <p className="mt-3 text-sm leading-relaxed text-ink/90">{alert.motivo}</p>
+              <ul className="mt-4 grid gap-3">
                 {alert.miembros.map((miembro) => (
-                  <li key={`${alert.id}-${miembro.beneficiarioId}`} className="xp-card">
+                  <li
+                    key={`${alert.id}-${miembro.beneficiarioId}`}
+                    className="rounded-lg border border-line bg-subtle/40 p-3.5"
+                  >
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       {miembro.beneficiarioId ? (
-                        <Link
-                          href={`/beneficiarios/${miembro.beneficiarioId}`}
-                          className="xp-link"
-                        >
+                        <Link href={`/beneficiarios/${miembro.beneficiarioId}`} className={linkClass}>
                           {miembro.nombre}
                         </Link>
                       ) : (
-                        <span className="font-semibold">{miembro.nombre}</span>
+                        <span className="font-semibold text-ink">{miembro.nombre}</span>
                       )}
-                      <span className="text-sm tabular-nums">{formatEuro(miembro.importe)}</span>
+                      <span className="text-sm font-semibold text-ink tabular-nums">{formatEuro(miembro.importe)}</span>
                     </div>
-                    <p className="text-sm text-muted">
-                      {miembro.nif} · {formatNumber(miembro.n)} subvenciones
+                    <p className="mt-1 text-xs text-muted sm:text-sm">
+                      <span className="font-mono">{miembro.nif}</span> · {formatNumber(miembro.n)} subvenciones
                       {miembro.fuenteUrl ? (
                         <>
                           {" · "}
@@ -108,13 +115,10 @@ const VinculosPage = async ({ searchParams }: { searchParams: Promise<AlertSearc
                       ) : null}
                     </p>
                     {miembro.items.length > 0 ? (
-                      <ul className="mt-2 flex flex-col gap-1">
+                      <ul className="mt-2 flex flex-col gap-1 text-sm">
                         {miembro.items.map((item) => (
                           <li key={item.concesionId}>
-                            <Link
-                              href={`/concesiones/${item.concesionId}`}
-                              className="xp-link font-normal"
-                            >
+                            <Link href={`/concesiones/${item.concesionId}`} className={linkClass}>
                               {formatEuro(item.importe)} el {formatDate(item.fecha)}
                             </Link>
                           </li>

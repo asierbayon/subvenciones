@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { AlertBanner } from "@/components/alert-banner";
 import { PageIntro, SetupNeeded } from "@/components/setup-needed";
 import { DatabaseMissingError, getDb, guard } from "@/lib/db";
@@ -227,13 +228,29 @@ const AlertasPage = async () => {
         Los umbrales de contratación y el de minimis son referencias. Una ayuda puede quedar debajo por una razón
         administrativa perfectamente regular.
       </AlertBanner>
-      <ul className="grid gap-3 md:grid-cols-2">
+      <ul className="grid gap-4 md:grid-cols-2">
         {signals.map((signal) => (
           <li key={signal.href}>
-            <Link href={signal.href} className="xp-card block">
-              <h2 className="xp-heading">{signal.title}</h2>
-              <p className="mt-2 text-sm leading-relaxed text-muted">{signal.text}</p>
-              <p className="mt-3 text-sm font-semibold text-accent">{signalCount(signal.table, counts)}</p>
+            <Link
+              href={signal.href}
+              className="group flex h-full flex-col justify-between rounded-xl border border-line bg-elev p-5 shadow-2xs transition-all hover:border-accent/50 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+            >
+              <div>
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="font-display text-base font-bold tracking-tight text-ink transition-colors group-hover:text-accent">
+                    {signal.title}
+                  </h2>
+                  <ArrowRight
+                    aria-hidden="true"
+                    size={16}
+                    className="shrink-0 text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-accent"
+                  />
+                </div>
+                <p className="mt-2 text-sm leading-relaxed text-muted">{signal.text}</p>
+              </div>
+              <p className="mt-4 text-xs font-semibold text-accent tabular-nums">
+                {signalCount(signal.table, counts)}
+              </p>
             </Link>
           </li>
         ))}
