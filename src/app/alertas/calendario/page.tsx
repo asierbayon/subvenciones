@@ -2,9 +2,13 @@ import Link from "next/link";
 import { AlertBanner } from "@/components/alert-banner";
 import { AlertFilterForm, AlertPager } from "@/components/alert-filters";
 import { EmptyState, PageIntro, SetupNeeded } from "@/components/setup-needed";
+import { Badge } from "@/components/ui/badge";
 import { listCalendario, parseAlertFilters, type AlertSearch } from "@/lib/alerts";
 import { DatabaseMissingError, guard } from "@/lib/db";
 import { formatDate, formatEuro, formatNumber } from "@/lib/format";
+
+const linkClass =
+  "font-medium text-accent underline decoration-accent/30 underline-offset-4 transition-colors hover:text-accent-strong hover:decoration-accent";
 
 const TIPOS = [
   { value: "elecciones", label: "Antes de elecciones" },
@@ -50,7 +54,11 @@ const CalendarioPage = async ({ searchParams }: { searchParams: Promise<AlertSea
     return (
       <PageIntro eyebrow="Calendario" title="Falta calcular este indicador">
         <p>
-          Ejecuta <code>python3 pipeline/alerts.py calendario</code>.
+          Ejecuta{" "}
+          <code className="rounded bg-subtle px-1.5 py-0.5 font-mono text-xs text-ink">
+            python3 pipeline/alerts.py calendario
+          </code>
+          .
         </p>
       </PageIntro>
     );
@@ -81,19 +89,19 @@ const CalendarioPage = async ({ searchParams }: { searchParams: Promise<AlertSea
       {loaded.rows.length === 0 ? (
         <EmptyState>Ningún indicador de calendario con estos filtros.</EmptyState>
       ) : (
-        <ol className="grid gap-3">
+        <ol className="grid gap-4">
           {loaded.rows.map((row) => (
-            <li key={row.id} className="xp-card">
-              <p className="text-xs font-semibold tracking-wide text-terra uppercase">{tipoLabel(row.tipo)}</p>
-              <h2 className="mt-1 xp-heading">{row.etiqueta}</h2>
-              <p className="mt-1 text-sm text-muted">
+            <li key={row.id} className="rounded-xl border border-line bg-elev p-5 shadow-2xs">
+              <Badge tone="terra">{tipoLabel(row.tipo)}</Badge>
+              <h2 className="mt-2 font-display text-base font-semibold text-ink">{row.etiqueta}</h2>
+              <p className="mt-1 text-xs text-muted sm:text-sm">
                 {row.organismo} · {row.ccaa} · {formatDate(row.fechaInicio)} – {formatDate(row.fechaFin)}
               </p>
-              <p className="mt-3 text-sm leading-relaxed">{row.motivo}</p>
-              <p className="mt-2 text-sm">
+              <p className="mt-3 text-sm leading-relaxed text-ink/90">{row.motivo}</p>
+              <p className="mt-3 text-sm">
                 <Link
                   href={concesionesHref(row.organismo, row.fechaInicio, row.tipo === "reemplazo" ? "" : row.fechaFin)}
-                  className="xp-link"
+                  className={linkClass}
                 >
                   Ver las {formatNumber(row.n)} concesiones de este organismo
                   {row.importe > 0 ? ` (${formatEuro(row.importe)})` : ""}

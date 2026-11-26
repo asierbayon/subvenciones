@@ -8,22 +8,25 @@ import { formatEuro, formatNumber } from "@/lib/format";
 import { parseFilters, type SearchParams } from "@/lib/params";
 import { getFacets, searchBeneficiarios, type Beneficiario } from "@/lib/queries";
 
+const linkClass =
+  "font-medium text-accent underline decoration-accent/30 underline-offset-4 transition-colors hover:text-accent-strong hover:decoration-accent";
+
 const columns: Column<Beneficiario>[] = [
   {
     id: "nombre",
     header: "Beneficiario",
     sortKey: "nombre",
     cell: (row) => (
-      <Link href={`/beneficiarios/${row.id}`} className="xp-link">
+      <Link href={`/beneficiarios/${row.id}`} className={linkClass}>
         {row.nombre}
-        {row.nif ? <span className="mt-0.5 block font-mono text-xs font-normal text-muted">{row.nif}</span> : null}
+        {row.nif ? <span className="mt-0.5 block font-mono text-xs font-normal text-muted no-underline">{row.nif}</span> : null}
       </Link>
     ),
   },
   {
     id: "tipo",
     header: "Tipo",
-    cell: (row) => row.tipo,
+    cell: (row) => <span className="text-muted">{row.tipo}</span>,
   },
   {
     id: "concesiones",
@@ -37,7 +40,7 @@ const columns: Column<Beneficiario>[] = [
     header: "Importe",
     sortKey: "importe",
     align: "right",
-    cell: (row) => formatEuro(row.importeTotal),
+    cell: (row) => <span className="font-semibold">{formatEuro(row.importeTotal)}</span>,
   },
 ];
 

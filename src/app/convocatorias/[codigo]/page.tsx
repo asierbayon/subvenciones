@@ -15,6 +15,9 @@ import { bdnsConvocatoriaUrl } from "@/lib/utils";
 
 type Params = { codigo: string };
 
+const linkClass =
+  "font-medium text-accent underline decoration-accent/30 underline-offset-4 transition-colors hover:text-accent-strong hover:decoration-accent";
+
 const columns: Column<Concesion>[] = [
   {
     id: "beneficiario",
@@ -22,7 +25,7 @@ const columns: Column<Concesion>[] = [
     sortKey: "beneficiario",
     cell: (row) =>
       row.beneficiarioId ? (
-        <Link href={`/beneficiarios/${row.beneficiarioId}`} className="xp-link">
+        <Link href={`/beneficiarios/${row.beneficiarioId}`} className={linkClass}>
           {row.beneficiarioNombre}
         </Link>
       ) : (
@@ -33,7 +36,7 @@ const columns: Column<Concesion>[] = [
     id: "fecha",
     header: "Fecha",
     sortKey: "fecha",
-    cell: (row) => formatDate(row.fecha),
+    cell: (row) => <span className="whitespace-nowrap text-muted">{formatDate(row.fecha)}</span>,
   },
   {
     id: "importe",
@@ -41,7 +44,7 @@ const columns: Column<Concesion>[] = [
     sortKey: "importe",
     align: "right",
     cell: (row) => (
-      <Link href={`/concesiones/${row.id}`} className="xp-link tabular-nums font-normal">
+      <Link href={`/concesiones/${row.id}`} className={`${linkClass} tabular-nums`}>
         {formatEuro(row.importe)}
       </Link>
     ),
@@ -49,7 +52,7 @@ const columns: Column<Concesion>[] = [
   {
     id: "tipo",
     header: "Tipo",
-    cell: (row) => row.tipoBeneficiario,
+    cell: (row) => <span className="text-muted">{row.tipoBeneficiario}</span>,
   },
 ];
 
@@ -112,12 +115,12 @@ const ConvocatoriaPage = async ({
           no vienen como campos propios del volcado.
         </p>
       </PageIntro>
-      <div className="mb-4 flex flex-wrap gap-2">
+      <div className="mb-5 flex flex-wrap gap-2">
         <Badge tone="accent">{row.ccaa}</Badge>
         <Badge>{row.sector}</Badge>
         {row.mrr ? <Badge tone="terra">MRR</Badge> : null}
       </div>
-      <dl className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <dl className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
         <Fact label="Organismo" value={row.organismo} />
         <Fact label="Administración" value={row.administracion || "—"} />
         <Fact label="Órgano" value={row.organo || "—"} />
@@ -129,19 +132,19 @@ const ConvocatoriaPage = async ({
           value={
             <span className="flex flex-col gap-1">
               <ExternalLink href={bdnsConvocatoriaUrl(row.codigoBdns)}>Ficha oficial en la BDNS</ExternalLink>
-              {bases ? <ExternalLink href={bases}>Bases reguladoras</ExternalLink> : <span>Sin URL de bases</span>}
+              {bases ? <ExternalLink href={bases}>Bases reguladoras</ExternalLink> : <span className="font-normal text-muted">Sin URL de bases</span>}
             </span>
           }
         />
       </dl>
-      {row.tituloCooficial ? <p className="mt-4 text-muted">Título cooficial: {row.tituloCooficial}</p> : null}
+      {row.tituloCooficial ? <p className="mt-4 text-sm text-muted">Título cooficial: {row.tituloCooficial}</p> : null}
       {loaded.found.duplicates > 1 ? (
-        <p className="mt-4 text-sm text-terra">
+        <p className="mt-4 text-sm font-medium text-terra">
           Hay {loaded.found.duplicates} filas con este código BDNS. Se muestra la que acumula más concesiones.
         </p>
       ) : null}
       <ContratosPublicos organismo={row.organismo} exact />
-      <h2 className="mt-10 xp-heading xp-heading-lg">Concesiones de esta convocatoria</h2>
+      <h2 className="mt-10 font-display text-xl font-bold tracking-tight text-ink">Concesiones de esta convocatoria</h2>
       <div className="mt-4">
         <DataView
           rows={loaded.grants.rows}

@@ -6,13 +6,23 @@ import { listBenford, listOutliers, listRedondo, parseAlertFilters, type AlertFi
 import { DatabaseMissingError, guard } from "@/lib/db";
 import { formatEuro, formatNumber } from "@/lib/format";
 
+const linkClass =
+  "font-medium text-accent underline decoration-accent/30 underline-offset-4 transition-colors hover:text-accent-strong hover:decoration-accent";
+
 const TIPOS = [
   { value: "benford", label: "Ley de Benford" },
   { value: "redondo", label: "Importes redondos" },
   { value: "atipico", label: "Importes atípicos" },
 ];
 
-const shell = (filters: AlertFilters, ccaa: string[], organismos: string[], total: number, pageSize: number, body: React.ReactNode) => (
+const shell = (
+  filters: AlertFilters,
+  ccaa: string[],
+  organismos: string[],
+  total: number,
+  pageSize: number,
+  body: React.ReactNode,
+) => (
   <>
     <PageIntro eyebrow="Estadística" title="Cifras que no se parecen al resto">
       <p>
@@ -20,9 +30,8 @@ const shell = (filters: AlertFilters, ccaa: string[], organismos: string[], tota
         marca a la mayoría de los organismos, así que aquí solo se publica si la MAD pasa de 0,030 y hay al menos 500
         subvenciones, con el mayor importe cien veces el menor. Un importe redondo es múltiplo de 1.000 €, y solo se
         marca si esa cuota supera en 20 puntos la del conjunto del volcado. Un atípico está a 3,5 desviaciones del
-        logaritmo del importe, dentro de su organismo
-        y de su tipo de beneficiario, en grupos de al menos 40 concesiones. No entran los NIF de administraciones,
-        congregaciones ni fundaciones (P, Q, S, R, G).
+        logaritmo del importe, dentro de su organismo y de su tipo de beneficiario, en grupos de al menos 40 concesiones.
+        No entran los NIF de administraciones, congregaciones ni fundaciones (P, Q, S, R, G).
       </p>
     </PageIntro>
     <AlertBanner>
@@ -73,7 +82,11 @@ const EstadisticaPage = async ({ searchParams }: { searchParams: Promise<AlertSe
     return (
       <PageIntro eyebrow="Estadística" title="Falta calcular este indicador">
         <p>
-          Ejecuta <code>python3 pipeline/alerts.py estadistica</code>.
+          Ejecuta{" "}
+          <code className="rounded bg-subtle px-1.5 py-0.5 font-mono text-xs text-ink">
+            python3 pipeline/alerts.py estadistica
+          </code>
+          .
         </p>
       </PageIntro>
     );
@@ -90,20 +103,22 @@ const EstadisticaPage = async ({ searchParams }: { searchParams: Promise<AlertSe
       data.rows.length === 0 ? (
         <EmptyState>Ningún importe atípico con estos filtros.</EmptyState>
       ) : (
-        <ol className="grid gap-3">
+        <ol className="grid gap-4">
           {data.rows.map((row) => (
-            <li key={row.id} className="xp-card">
+            <li key={row.id} className="rounded-xl border border-line bg-elev p-5 shadow-2xs">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="xp-heading">
-                  <Link href={`/concesiones/${row.concesionId}`} className="xp-link font-normal">
+                <h2 className="font-display text-base font-semibold text-ink">
+                  <Link href={`/concesiones/${row.concesionId}`} className={`${linkClass} tabular-nums`}>
                     {formatEuro(row.importe)}
                   </Link>
                 </h2>
-                <p className="text-sm text-muted">z = {row.zeta.toLocaleString("es-ES", { maximumFractionDigits: 1 })}</p>
+                <p className="font-mono text-xs font-medium text-muted">
+                  z = {row.zeta.toLocaleString("es-ES", { maximumFractionDigits: 1 })}
+                </p>
               </div>
-              <p className="mt-1 text-sm text-muted">
+              <p className="mt-1 text-xs text-muted sm:text-sm">
                 {row.beneficiarioId ? (
-                  <Link href={`/beneficiarios/${row.beneficiarioId}`} className="xp-link font-normal">
+                  <Link href={`/beneficiarios/${row.beneficiarioId}`} className={linkClass}>
                     {row.nombre}
                   </Link>
                 ) : (
@@ -111,7 +126,7 @@ const EstadisticaPage = async ({ searchParams }: { searchParams: Promise<AlertSe
                 )}{" "}
                 · {row.tipo} · {row.organismo} · {row.ccaa}
               </p>
-              <p className="mt-2 text-sm leading-relaxed">
+              <p className="mt-2 text-sm leading-relaxed text-ink/90">
                 La mediana de las {formatNumber(row.nGrupo)} subvenciones de este tipo en este organismo es{" "}
                 {formatEuro(row.mediana)}. Este importe queda muy por encima de esa nube. Es un indicador de rareza, no
                 de una concesión indebida.
@@ -131,30 +146,34 @@ const EstadisticaPage = async ({ searchParams }: { searchParams: Promise<AlertSe
       data.organismos,
       data.total,
       data.pageSize,
-      <div className="xp-table-frame">
-        <table className="xp-table">
+      <div className="overflow-x-auto rounded-xl border border-line bg-elev shadow-2xs">
+        <table className="w-full border-collapse text-sm">
           <caption className="sr-only">Cuota de importes múltiplos de mil euros</caption>
           <thead>
-            <tr>
-              <th scope="col" className="px-3 py-2">Organismo</th>
-              <th scope="col" className="px-3 py-2">Territorio</th>
-              <th scope="col" className="px-3 py-2 text-right">Concesiones</th>
-              <th scope="col" className="px-3 py-2 text-right">Múltiplos de 1.000 €</th>
-              <th scope="col" className="px-3 py-2 text-right">En todo el volcado</th>
+            <tr className="border-b border-line bg-subtle/70 text-left text-xs font-semibold tracking-wider text-muted uppercase">
+              <th scope="col" className="px-4 py-3">Organismo</th>
+              <th scope="col" className="px-4 py-3">Territorio</th>
+              <th scope="col" className="px-4 py-3 text-right">Concesiones</th>
+              <th scope="col" className="px-4 py-3 text-right">Múltiplos de 1.000 €</th>
+              <th scope="col" className="px-4 py-3 text-right">En todo el volcado</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-line">
             {data.rows.map((row) => (
-              <tr key={row.id} className="border-t border-line">
-                <th scope="row" className="px-3 py-2 text-left font-semibold">
-                  <Link href={`/concesiones?organismo=${encodeURIComponent(row.organismo)}`} className="xp-link font-normal">
+              <tr key={row.id} className="transition-colors hover:bg-highlight/60">
+                <th scope="row" className="px-4 py-3 text-left font-medium">
+                  <Link href={`/concesiones?organismo=${encodeURIComponent(row.organismo)}`} className={linkClass}>
                     {row.organismo}
                   </Link>
                 </th>
-                <td className="px-3 py-2">{row.ccaa}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.n)}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{(row.cuota * 100).toLocaleString("es-ES", { maximumFractionDigits: 1 })} %</td>
-                <td className="px-3 py-2 text-right tabular-nums">{(row.cuotaGlobal * 100).toLocaleString("es-ES", { maximumFractionDigits: 1 })} %</td>
+                <td className="px-4 py-3 text-muted">{row.ccaa}</td>
+                <td className="px-4 py-3 text-right tabular-nums text-muted">{formatNumber(row.n)}</td>
+                <td className="px-4 py-3 text-right font-semibold tabular-nums">
+                  {(row.cuota * 100).toLocaleString("es-ES", { maximumFractionDigits: 1 })} %
+                </td>
+                <td className="px-4 py-3 text-right tabular-nums text-muted">
+                  {(row.cuotaGlobal * 100).toLocaleString("es-ES", { maximumFractionDigits: 1 })} %
+                </td>
               </tr>
             ))}
           </tbody>
@@ -170,28 +189,30 @@ const EstadisticaPage = async ({ searchParams }: { searchParams: Promise<AlertSe
     data.organismos,
     data.total,
     data.pageSize,
-    <div className="xp-table-frame">
-      <table className="xp-table">
+    <div className="overflow-x-auto rounded-xl border border-line bg-elev shadow-2xs">
+      <table className="w-full border-collapse text-sm">
         <caption className="sr-only">Desviación de Benford por organismo</caption>
         <thead>
-          <tr>
-            <th scope="col" className="px-3 py-2">Organismo</th>
-            <th scope="col" className="px-3 py-2">Territorio</th>
-            <th scope="col" className="px-3 py-2 text-right">Concesiones</th>
-            <th scope="col" className="px-3 py-2 text-right">MAD</th>
+          <tr className="border-b border-line bg-subtle/70 text-left text-xs font-semibold tracking-wider text-muted uppercase">
+            <th scope="col" className="px-4 py-3">Organismo</th>
+            <th scope="col" className="px-4 py-3">Territorio</th>
+            <th scope="col" className="px-4 py-3 text-right">Concesiones</th>
+            <th scope="col" className="px-4 py-3 text-right">MAD</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody className="divide-y divide-line">
           {data.rows.map((row) => (
-            <tr key={row.id} className="border-t border-line">
-              <th scope="row" className="px-3 py-2 text-left font-semibold">
-                <Link href={`/concesiones?organismo=${encodeURIComponent(row.organismo)}`} className="xp-link font-normal">
+            <tr key={row.id} className="transition-colors hover:bg-highlight/60">
+              <th scope="row" className="px-4 py-3 text-left font-medium">
+                <Link href={`/concesiones?organismo=${encodeURIComponent(row.organismo)}`} className={linkClass}>
                   {row.organismo}
                 </Link>
               </th>
-              <td className="px-3 py-2">{row.ccaa}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.n)}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{row.mad.toLocaleString("es-ES", { maximumFractionDigits: 4 })}</td>
+              <td className="px-4 py-3 text-muted">{row.ccaa}</td>
+              <td className="px-4 py-3 text-right tabular-nums text-muted">{formatNumber(row.n)}</td>
+              <td className="px-4 py-3 text-right font-semibold tabular-nums">
+                {row.mad.toLocaleString("es-ES", { maximumFractionDigits: 4 })}
+              </td>
             </tr>
           ))}
         </tbody>

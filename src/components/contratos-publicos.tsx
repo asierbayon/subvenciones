@@ -10,6 +10,9 @@ import {
   type ContratoRow,
 } from "@/lib/contratos";
 
+const linkClass =
+  "font-medium text-accent underline decoration-accent/35 underline-offset-4 transition-colors hover:text-accent-strong hover:decoration-accent";
+
 const nivelLabel = (nivel: string) => {
   if (nivel === "menor_umbral") {
     return "Menores bajo el umbral";
@@ -37,43 +40,44 @@ const bandaLabel = (codigo: string) => {
 };
 
 const MenorUmbralCard = ({ alert }: { alert: ContratoAlert }) => (
-  <article className="xp-card">
+  <article className="rounded-xl border border-line bg-elev p-5 shadow-2xs transition-colors hover:border-line-strong">
     <div className="flex flex-wrap items-baseline justify-between gap-2">
-      <h3 className="xp-heading">
+      <h3 className="font-display text-base font-semibold text-ink">
         {alert.beneficiarioId ? (
-          <Link href={`/beneficiarios/${alert.beneficiarioId}`} className="xp-link font-normal">
+          <Link href={`/beneficiarios/${alert.beneficiarioId}`} className={linkClass}>
             {alert.nombre}
           </Link>
         ) : (
           alert.nombre
         )}
       </h3>
-      <p className="text-sm font-semibold tabular-nums">
+      <p className="text-sm font-semibold text-ink tabular-nums">
         {Math.round(alert.puntuacion)} pts · {formatEuro(alert.importeContrato)}
       </p>
     </div>
-    <p className="mt-1 text-sm text-muted">
-      {alert.nif} · {alert.organismo} · {alert.ccaa} · {alert.nContratos.toLocaleString("es-ES")} contratos menores ·{" "}
-      {formatDate(alert.fechaConcesionMin)} – {formatDate(alert.fechaContrato)}
+    <p className="mt-1 text-xs text-muted sm:text-sm">
+      <span className="font-mono">{alert.nif}</span> · {alert.organismo} · {alert.ccaa} ·{" "}
+      {alert.nContratos.toLocaleString("es-ES")} contratos menores · {formatDate(alert.fechaConcesionMin)} –{" "}
+      {formatDate(alert.fechaContrato)}
     </p>
-    <div className="mt-2 flex flex-wrap gap-2">
+    <div className="mt-3 flex flex-wrap gap-2">
       <Badge tone="terra">Indicador</Badge>
       <Badge tone="accent">{nivelLabel(alert.nivel)}</Badge>
       <Badge>{bandaLabel(alert.umbralCodigo || alert.via)}</Badge>
     </div>
-    <p className="mt-3 text-sm leading-relaxed">{alert.motivo}</p>
-    <ul className="mt-3 xp-inset-list">
+    <p className="mt-3 text-sm leading-relaxed text-ink/90">{alert.motivo}</p>
+    <ul className="mt-4 divide-y divide-line overflow-hidden rounded-lg border border-line bg-subtle/40">
       {alert.piezas.map((pieza) => (
         <li
           key={`${pieza.expediente}-${pieza.lote}-${pieza.fecha}-${pieza.importe}`}
-          className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:items-baseline sm:justify-between"
+          className="flex flex-col gap-1 px-3.5 py-2.5 text-sm sm:flex-row sm:items-baseline sm:justify-between"
         >
           {pieza.url ? (
             <ExternalLink href={pieza.url}>
               {formatEuro(pieza.importe)} el {formatDate(pieza.fecha)}
             </ExternalLink>
           ) : (
-            <span>
+            <span className="font-medium tabular-nums">
               {formatEuro(pieza.importe)} el {formatDate(pieza.fecha)}
             </span>
           )}
@@ -101,7 +105,7 @@ const fuenteLabel = (fuente: string) => {
 };
 
 const AlertMarks = ({ alert }: { alert: Pick<ContratoAlert, "nivel" | "menor" | "sinConcurrencia" | "emergencia"> }) => (
-  <div className="mt-2 flex flex-wrap gap-2">
+  <div className="mt-3 flex flex-wrap gap-2">
     <Badge tone="terra">Indicador</Badge>
     <Badge tone="accent">{nivelLabel(alert.nivel)}</Badge>
     {alert.menor ? <Badge>Contrato menor</Badge> : null}
@@ -115,66 +119,64 @@ export const ContratoAlertCard = ({ alert }: { alert: ContratoAlert }) => {
     return <MenorUmbralCard alert={alert} />;
   }
   return (
-  <article className="xp-card">
-    <div className="flex flex-wrap items-baseline justify-between gap-2">
-      <h3 className="xp-heading">
-        {alert.beneficiarioId ? (
-          <Link
-            href={`/beneficiarios/${alert.beneficiarioId}`}
-            className="xp-link font-normal"
-          >
-            {alert.nombre}
-          </Link>
+    <article className="rounded-xl border border-line bg-elev p-5 shadow-2xs transition-colors hover:border-line-strong">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="font-display text-base font-semibold text-ink">
+          {alert.beneficiarioId ? (
+            <Link href={`/beneficiarios/${alert.beneficiarioId}`} className={linkClass}>
+              {alert.nombre}
+            </Link>
+          ) : (
+            alert.nombre
+          )}
+        </h3>
+        <p className="text-sm font-semibold text-ink tabular-nums">{formatEuro(alert.importeContrato)}</p>
+      </div>
+      <p className="mt-1 text-xs text-muted sm:text-sm">
+        <span className="font-mono">{alert.nif}</span> · {alert.organismo} · {alert.ccaa} · adjudicación{" "}
+        {formatDate(alert.fechaContrato)} · a {alert.dias} días de una concesión
+      </p>
+      <AlertMarks alert={alert} />
+      <p className="mt-3 text-sm leading-relaxed text-ink/90">{alert.motivo}</p>
+      <p className="mt-3 text-sm">
+        {alert.url ? (
+          <ExternalLink href={alert.url}>Anuncio en la PLACSP ({fuenteLabel(alert.fuente)})</ExternalLink>
         ) : (
-          alert.nombre
+          <span className="text-muted">El anuncio no trae enlace.</span>
         )}
-      </h3>
-      <p className="text-sm font-semibold tabular-nums">{formatEuro(alert.importeContrato)}</p>
-    </div>
-    <p className="mt-1 text-sm text-muted">
-      {alert.nif} · {alert.organismo} · {alert.ccaa} · adjudicación {formatDate(alert.fechaContrato)} · a {alert.dias}{" "}
-      días de una concesión
-    </p>
-    <AlertMarks alert={alert} />
-    <p className="mt-3 text-sm leading-relaxed">{alert.motivo}</p>
-    <p className="mt-3 text-sm">
-      {alert.url ? (
-        <ExternalLink href={alert.url}>Anuncio en la PLACSP ({fuenteLabel(alert.fuente)})</ExternalLink>
-      ) : (
-        <span className="text-muted">El anuncio no trae enlace.</span>
-      )}
-      <span className="text-muted">
-        {" "}
-        · {alert.procedimientoNombre} · expediente {alert.expediente}
-        {alert.lote ? ` · lote ${alert.lote}` : ""} · órgano del contrato: {alert.organoContrato}
-        {alert.dir3 ? ` · DIR3 ${alert.dir3}` : ""}
-      </span>
-    </p>
-    <ul className="mt-3 xp-inset-list">
-      {alert.items.map((item) => (
-        <li key={item.concesionId} className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:items-baseline sm:justify-between">
-          <Link
-            href={`/concesiones/${item.concesionId}`}
-            className="xp-link"
+        <span className="text-muted">
+          {" "}
+          · {alert.procedimientoNombre} · expediente {alert.expediente}
+          {alert.lote ? ` · lote ${alert.lote}` : ""} · órgano del contrato: {alert.organoContrato}
+          {alert.dir3 ? ` · DIR3 ${alert.dir3}` : ""}
+        </span>
+      </p>
+      <ul className="mt-4 divide-y divide-line overflow-hidden rounded-lg border border-line bg-subtle/40">
+        {alert.items.map((item) => (
+          <li
+            key={item.concesionId}
+            className="flex flex-col gap-1 px-3.5 py-2.5 text-sm sm:flex-row sm:items-baseline sm:justify-between"
           >
-            {formatEuro(item.importe)} el {formatDate(item.fecha)}
-          </Link>
-          <span className="text-muted sm:max-w-[60%] sm:text-right">{item.titulo}</span>
-        </li>
-      ))}
-    </ul>
-  </article>
+            <Link href={`/concesiones/${item.concesionId}`} className={linkClass}>
+              {formatEuro(item.importe)} el {formatDate(item.fecha)}
+            </Link>
+            <span className="text-muted sm:max-w-[60%] sm:text-right">{item.titulo}</span>
+          </li>
+        ))}
+      </ul>
+    </article>
   );
 };
 
 const ContractLine = ({ row }: { row: ContratoRow }) => (
-  <li className="xp-card text-sm">
+  <li className="rounded-xl border border-line bg-elev p-4 text-sm shadow-2xs">
     <div className="flex flex-wrap items-baseline justify-between gap-2">
-      <p className="font-semibold">{row.titulo}</p>
-      <p className="tabular-nums">{formatEuro(row.importe)}</p>
+      <p className="font-semibold text-ink">{row.titulo}</p>
+      <p className="font-semibold text-ink tabular-nums">{formatEuro(row.importe)}</p>
     </div>
     <p className="mt-1 text-muted">
-      {formatDate(row.fecha)} · {row.organo || "Órgano no indicado"} · {row.procedimientoNombre} · {fuenteLabel(row.fuente)}
+      {formatDate(row.fecha)} · {row.organo || "Órgano no indicado"} · {row.procedimientoNombre} ·{" "}
+      {fuenteLabel(row.fuente)}
     </p>
     {row.url ? (
       <p className="mt-2">
@@ -185,13 +187,10 @@ const ContractLine = ({ row }: { row: ContratoRow }) => (
       <div className="mt-2">
         <AlertMarks alert={row.alerta} />
         <p className="mt-2 leading-relaxed">{row.alerta.motivo}</p>
-        <ul className="mt-2 xp-inset-list">
+        <ul className="mt-3 divide-y divide-line overflow-hidden rounded-lg border border-line bg-subtle/40">
           {row.alerta.items.map((item) => (
-            <li key={item.concesionId} className="px-3 py-2">
-              <Link
-                href={`/concesiones/${item.concesionId}`}
-                className="xp-link"
-              >
+            <li key={item.concesionId} className="px-3.5 py-2">
+              <Link href={`/concesiones/${item.concesionId}`} className={linkClass}>
                 Concesión de {formatEuro(item.importe)} el {formatDate(item.fecha)}
               </Link>
             </li>
@@ -203,11 +202,11 @@ const ContractLine = ({ row }: { row: ContratoRow }) => (
 );
 
 const Missing = () => (
-  <section className="mt-8 xp-empty">
-    <h2 className="xp-heading">Contratos públicos</h2>
+  <section className="mt-8 rounded-xl border border-dashed border-line-strong bg-elev/60 p-6 text-center">
+    <h2 className="font-display text-base font-semibold text-ink">Contratos públicos</h2>
     <p className="mt-2 text-sm leading-relaxed text-muted">
       El cruce con la Plataforma de Contratación del Sector Público no está calculado. Es un paso opcional:{" "}
-      <code>python3 pipeline/contratos.py</code>.
+      <code className="rounded bg-subtle px-1.5 py-0.5 font-mono text-xs text-ink">python3 pipeline/contratos.py</code>.
     </p>
   </section>
 );
@@ -225,8 +224,8 @@ export const ContratosPublicos = async ({ nif, organismo, exact = false }: Contr
       return <Missing />;
     }
     return (
-      <section className="mt-8">
-        <h2 className="xp-heading xp-heading-lg">Contratos públicos</h2>
+      <section className="mt-10">
+        <h2 className="font-display text-xl font-bold tracking-tight text-ink">Contratos públicos</h2>
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
           Indicador, no prueba. Contratos de este NIF adjudicados por el mismo organismo, o por la misma administración
           cuando el contrato es menor o no salió a convocatoria abierta, a menos de 180 días de una concesión.
@@ -246,7 +245,7 @@ export const ContratosPublicos = async ({ nif, organismo, exact = false }: Contr
           <p className="mt-3 text-sm">
             <Link
               href={`/alertas/contratos?organismo=${encodeURIComponent(organismo)}`}
-              className="font-semibold text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
+              className={linkClass}
             >
               Ver los {loaded.total.toLocaleString("es-ES")} indicadores de este organismo
             </Link>
@@ -262,8 +261,8 @@ export const ContratosPublicos = async ({ nif, organismo, exact = false }: Contr
       return <Missing />;
     }
     return (
-      <section className="mt-8">
-        <h2 className="xp-heading xp-heading-lg">Contratos públicos</h2>
+      <section className="mt-10">
+        <h2 className="font-display text-xl font-bold tracking-tight text-ink">Contratos públicos</h2>
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
           Adjudicaciones de la PLACSP entre 2018 y 2022 a este NIF. Si una fila lleva la marca «Indicador», el contrato
           queda cerca en el tiempo de una concesión del mismo organismo o, si es menor o sin convocatoria abierta, de la
@@ -297,8 +296,8 @@ export const ContratosPublicos = async ({ nif, organismo, exact = false }: Contr
     return <Missing />;
   }
   return (
-    <section className="mt-8">
-      <h2 className="xp-heading xp-heading-lg">Contratos públicos</h2>
+    <section className="mt-10">
+      <h2 className="font-display text-xl font-bold tracking-tight text-ink">Contratos públicos</h2>
       <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
         Indicador, no prueba. Beneficiarios de este organismo que también se adjudican un contrato suyo, o de la misma
         administración si el contrato es menor o no salió a convocatoria abierta, en una ventana de 180 días.
@@ -318,7 +317,7 @@ export const ContratosPublicos = async ({ nif, organismo, exact = false }: Contr
         <p className="mt-3 text-sm">
           <Link
             href={`/alertas/contratos?organismo=${encodeURIComponent(organismo)}`}
-            className="font-semibold text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
+            className={linkClass}
           >
             Ver los {loaded.total.toLocaleString("es-ES")} indicadores
           </Link>

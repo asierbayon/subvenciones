@@ -39,7 +39,10 @@ const ContratosAlertPage = async ({ searchParams }: { searchParams: Promise<Aler
       <PageIntro eyebrow="Contratos públicos" title="Falta calcular este indicador">
         <p>
           El índice de concesiones está, pero todavía no se ha cruzado con la PLACSP. En la raíz del proyecto:{" "}
-          <code>python3 pipeline/contratos.py</code>. El paso es opcional y no hace falta para el resto de Faro.
+          <code className="rounded bg-subtle px-1.5 py-0.5 font-mono text-xs text-ink">
+            python3 pipeline/contratos.py
+          </code>
+          . El paso es opcional y no hace falta para el resto de Faro.
         </p>
       </PageIntro>
     );
@@ -62,7 +65,7 @@ const ContratosAlertPage = async ({ searchParams }: { searchParams: Promise<Aler
         Es un indicador para abrir expedientes. Un contrato menor o un negociado sin publicidad pueden ser legales, y el
         nombre del órgano se empareja por aproximación: la BDNS no trae el código DIR3.
       </AlertBanner>
-      {cobertura ? <p className="mb-4 text-sm leading-relaxed text-muted">{cobertura}</p> : null}
+      {cobertura ? <p className="mb-5 text-sm leading-relaxed text-muted">{cobertura}</p> : null}
       <AlertFilterForm
         action="/alertas/contratos"
         filters={filters}

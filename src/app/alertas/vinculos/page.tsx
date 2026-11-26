@@ -1,11 +1,15 @@
 import Link from "next/link";
 import { AlertBanner } from "@/components/alert-banner";
 import { AlertFilterForm, AlertPager } from "@/components/alert-filters";
+import { ExternalLink } from "@/components/facts";
 import { EmptyState, PageIntro, SetupNeeded } from "@/components/setup-needed";
 import { Badge } from "@/components/ui/badge";
 import { DatabaseMissingError, guard } from "@/lib/db";
 import { listVinculos, parseAlertFilters, type AlertSearch, type VinculoAlert } from "@/lib/alerts";
 import { formatDate, formatEuro } from "@/lib/format";
+
+const linkClass =
+  "font-medium text-accent underline decoration-accent/30 underline-offset-4 transition-colors hover:text-accent-strong hover:decoration-accent";
 
 const ROLES = [
   { value: "alcalde", label: "Alcaldía" },
@@ -25,10 +29,7 @@ const CompanyName = ({ alert }: { alert: VinculoAlert }) => {
     return alert.empresa;
   }
   return (
-    <Link
-      href={`/beneficiarios/${alert.beneficiarioId}`}
-      className="xp-link font-normal"
-    >
+    <Link href={`/beneficiarios/${alert.beneficiarioId}`} className={linkClass}>
       {alert.empresa}
     </Link>
   );
@@ -60,10 +61,7 @@ const CompanyTenure = ({ alert }: { alert: VinculoAlert }) => {
 };
 
 const GrantLink = ({ id, children }: { id: number; children: string }) => (
-  <Link
-    href={`/concesiones/${id}`}
-    className="xp-link"
-  >
+  <Link href={`/concesiones/${id}`} className={linkClass}>
     {children}
   </Link>
 );
@@ -92,8 +90,16 @@ const VinculosPage = async ({ searchParams }: { searchParams: Promise<AlertSearc
       <PageIntro eyebrow="Vínculos políticos" title="Falta calcular este indicador">
         <p>
           Hace falta la tabla de cargos públicos y, cuando exista, la de administradores societarios. En la raíz del
-          proyecto: <code>python3 pipeline/politicos.py</code> y después <code>python3 pipeline/vinculos.py</code>. El
-          segundo comando no escribe nada hasta que el índice tiene la tabla <code>borme_admins</code>.
+          proyecto:{" "}
+          <code className="rounded bg-subtle px-1.5 py-0.5 font-mono text-xs text-ink">
+            python3 pipeline/politicos.py
+          </code>{" "}
+          y después{" "}
+          <code className="rounded bg-subtle px-1.5 py-0.5 font-mono text-xs text-ink">
+            python3 pipeline/vinculos.py
+          </code>
+          . El segundo comando no escribe nada hasta que el índice tiene la tabla{" "}
+          <code className="rounded bg-subtle px-1.5 py-0.5 font-mono text-xs text-ink">borme_admins</code>.
         </p>
       </PageIntro>
     );
@@ -125,22 +131,22 @@ const VinculosPage = async ({ searchParams }: { searchParams: Promise<AlertSearc
       ) : (
         <ol className="grid gap-4">
           {loaded.alerts.map((alert) => (
-            <li key={alert.id} className="xp-card">
+            <li key={alert.id} className="rounded-xl border border-line bg-elev p-5 shadow-2xs">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="xp-heading">
+                <h2 className="font-display text-base font-semibold text-ink">
                   <CompanyName alert={alert} />
                 </h2>
-                <p className="text-sm font-semibold tabular-nums">{formatEuro(alert.importeSuma)}</p>
+                <p className="text-sm font-semibold text-ink tabular-nums">{formatEuro(alert.importeSuma)}</p>
               </div>
-              <p className="mt-1 text-sm text-muted">
-                {alert.nif} · {alert.organismo} · {alert.ccaa} · {alert.anio}
+              <p className="mt-1 text-xs text-muted sm:text-sm">
+                <span className="font-mono">{alert.nif}</span> · {alert.organismo} · {alert.ccaa} · {alert.anio}
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <Badge tone="terra">{roleLabel(alert.rol)}</Badge>
                 <Badge>Confianza {confidenceLabel(alert.confianza)}</Badge>
                 <NamesakeBadge lugares={alert.lugares} />
               </div>
-              <p className="mt-3 text-sm leading-relaxed">
+              <p className="mt-3 text-sm leading-relaxed text-ink">
                 <span className="font-semibold">{alert.politicoNombre}</span>
                 <PartyName partido={alert.partido} />. {alert.cuerpo}. Mandato {formatDate(alert.mandatoDesde)} –{" "}
                 {formatDate(alert.mandatoHasta)}. En la sociedad figura como {alert.adminCargo || "cargo no informado"} (
@@ -148,23 +154,16 @@ const VinculosPage = async ({ searchParams }: { searchParams: Promise<AlertSearc
                 <CompanyTenure alert={alert} />
                 ).
               </p>
-              <p className="mt-3 text-sm leading-relaxed">{alert.motivo}</p>
-              <p className="mt-2 text-sm">
-                <a
-                  href={alert.fuenteUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="xp-link"
-                >
-                  Fuente publicada
-                </a>
+              <p className="mt-2 text-sm leading-relaxed text-muted">{alert.motivo}</p>
+              <p className="mt-3 text-sm">
+                <ExternalLink href={alert.fuenteUrl}>Fuente publicada</ExternalLink>
                 <span className="text-muted"> · {alert.fuente}</span>
               </p>
-              <ul className="mt-3 xp-inset-list">
+              <ul className="mt-4 divide-y divide-line overflow-hidden rounded-lg border border-line bg-subtle/40">
                 {alert.items.map((item) => (
                   <li
                     key={item.concesionId}
-                    className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:items-baseline sm:justify-between"
+                    className="flex flex-col gap-1 px-3.5 py-2.5 text-sm sm:flex-row sm:items-baseline sm:justify-between"
                   >
                     <GrantLink id={item.concesionId}>
                       {`${formatEuro(item.importe)} el ${formatDate(item.fecha)}`}

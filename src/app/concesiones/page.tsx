@@ -5,11 +5,13 @@ import { FilterForm } from "@/components/filter-form";
 import { PaginationBar } from "@/components/pagination-bar";
 import { PageIntro, SetupNeeded } from "@/components/setup-needed";
 import { guard } from "@/lib/db";
-import { formatDate, formatEuro } from "@/lib/format";
-import { formatNumber } from "@/lib/format";
+import { formatDate, formatEuro, formatNumber } from "@/lib/format";
 import { parseFilters, type SearchParams } from "@/lib/params";
 import { ContratosPublicos } from "@/components/contratos-publicos";
 import { getFacets, searchConcesiones, type Concesion } from "@/lib/queries";
+
+const linkClass =
+  "font-medium text-accent underline decoration-accent/30 underline-offset-4 transition-colors hover:text-accent-strong hover:decoration-accent";
 
 const columns: Column<Concesion>[] = [
   {
@@ -18,7 +20,7 @@ const columns: Column<Concesion>[] = [
     sortKey: "beneficiario",
     cell: (row) =>
       row.beneficiarioId ? (
-        <Link href={`/beneficiarios/${row.beneficiarioId}`} className="xp-link">
+        <Link href={`/beneficiarios/${row.beneficiarioId}`} className={linkClass}>
           {row.beneficiarioNombre}
         </Link>
       ) : (
@@ -29,7 +31,7 @@ const columns: Column<Concesion>[] = [
     id: "fecha",
     header: "Fecha",
     sortKey: "fecha",
-    cell: (row) => formatDate(row.fecha),
+    cell: (row) => <span className="whitespace-nowrap text-muted">{formatDate(row.fecha)}</span>,
   },
   {
     id: "importe",
@@ -38,10 +40,10 @@ const columns: Column<Concesion>[] = [
     align: "right",
     cell: (row) => (
       <span className="inline-flex flex-col items-end gap-1">
-        <Link href={`/concesiones/${row.id}`} className="xp-link tabular-nums">
+        <Link href={`/concesiones/${row.id}`} className={`${linkClass} font-semibold tabular-nums`}>
           {formatEuro(row.importe)}
         </Link>
-        {row.esDuplicado ? <Badge>Repetida, no suma</Badge> : null}
+        {row.esDuplicado ? <Badge tone="terra">Repetida, no suma</Badge> : null}
       </span>
     ),
   },
@@ -62,7 +64,7 @@ const columns: Column<Concesion>[] = [
     sortKey: "titulo",
     cell: (row) =>
       row.codigoBdns ? (
-        <Link href={`/convocatorias/${row.codigoBdns}`} className="xp-link font-normal">
+        <Link href={`/convocatorias/${row.codigoBdns}`} className={linkClass}>
           {row.titulo}
         </Link>
       ) : (

@@ -5,6 +5,9 @@ import { formatDate, formatEuro } from "@/lib/format";
 import { parseFilters, toQuery, type SearchParams } from "@/lib/params";
 import { hasSearchTerms, searchBeneficiarios, searchConvocatorias } from "@/lib/queries";
 
+const linkClass =
+  "font-medium text-accent underline decoration-accent/30 underline-offset-4 transition-colors hover:text-accent-strong hover:decoration-accent";
+
 const BuscarPage = async ({ searchParams }: { searchParams: Promise<SearchParams> }) => {
   const filters = parseFilters(await searchParams, "fecha");
   if (!hasSearchTerms(filters.q)) {
@@ -35,48 +38,55 @@ const BuscarPage = async ({ searchParams }: { searchParams: Promise<SearchParams
       <PageIntro eyebrow="Búsqueda" title={`Resultados para «${filters.q}»`}>
         <p>Coincidencias por título, organismo, nombre o NIF. Los acentos no importan.</p>
       </PageIntro>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <section className="xp-group">
-          <div className="mb-2 flex items-baseline justify-between gap-3">
-            <h2 className="xp-heading">Convocatorias</h2>
-            <Link href={convocatoriasHref} className="xp-link font-normal">
+      <div className="grid gap-6 lg:grid-cols-2">
+        <section className="rounded-xl border border-line bg-elev p-5 shadow-2xs">
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <h2 className="font-display text-lg font-bold tracking-tight text-ink">Convocatorias</h2>
+            <Link href={convocatoriasHref} className="text-sm font-medium text-accent hover:text-accent-strong hover:underline underline-offset-4">
               Ver todas
             </Link>
           </div>
-          <ul className="xp-inset-list">
-            {loaded.convocatorias.rows.map((row) => (
-              <li key={row.id} className="px-3 py-2">
-                <Link href={`/convocatorias/${row.codigoBdns}`} className="xp-link">
-                  {row.titulo}
-                </Link>
-                <p className="mt-1 text-muted">
-                  {formatDate(row.fecha)} · {row.organismo}
-                </p>
-              </li>
-            ))}
-          </ul>
-          {loaded.convocatorias.rows.length === 0 ? <p className="text-muted">Ninguna convocatoria coincide.</p> : null}
+          {loaded.convocatorias.rows.length > 0 ? (
+            <ul className="divide-y divide-line overflow-hidden rounded-lg border border-line">
+              {loaded.convocatorias.rows.map((row) => (
+                <li key={row.id} className="px-4 py-3 text-sm transition-colors hover:bg-highlight/50">
+                  <Link href={`/convocatorias/${row.codigoBdns}`} className={linkClass}>
+                    {row.titulo}
+                  </Link>
+                  <p className="mt-1 text-xs text-muted">
+                    {formatDate(row.fecha)} · {row.organismo}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="py-4 text-sm text-muted">Ninguna convocatoria coincide.</p>
+          )}
         </section>
-        <section className="xp-group">
-          <div className="mb-2 flex items-baseline justify-between gap-3">
-            <h2 className="xp-heading">Beneficiarios</h2>
-            <Link href={beneficiariosHref} className="xp-link font-normal">
+
+        <section className="rounded-xl border border-line bg-elev p-5 shadow-2xs">
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <h2 className="font-display text-lg font-bold tracking-tight text-ink">Beneficiarios</h2>
+            <Link href={beneficiariosHref} className="text-sm font-medium text-accent hover:text-accent-strong hover:underline underline-offset-4">
               Ver todos
             </Link>
           </div>
-          <ul className="xp-inset-list">
-            {loaded.beneficiarios.rows.map((row) => (
-              <li key={row.id} className="px-3 py-2">
-                <Link href={`/beneficiarios/${row.id}`} className="xp-link">
-                  {row.nombre}
-                </Link>
-                <p className="mt-1 text-muted">
-                  {row.nif} · {formatEuro(row.importeTotal)}
-                </p>
-              </li>
-            ))}
-          </ul>
-          {loaded.beneficiarios.rows.length === 0 ? <p className="text-muted">Ningún beneficiario coincide.</p> : null}
+          {loaded.beneficiarios.rows.length > 0 ? (
+            <ul className="divide-y divide-line overflow-hidden rounded-lg border border-line">
+              {loaded.beneficiarios.rows.map((row) => (
+                <li key={row.id} className="px-4 py-3 text-sm transition-colors hover:bg-highlight/50">
+                  <Link href={`/beneficiarios/${row.id}`} className={linkClass}>
+                    {row.nombre}
+                  </Link>
+                  <p className="mt-1 text-xs text-muted">
+                    <span className="font-mono">{row.nif}</span> · <span className="tabular-nums">{formatEuro(row.importeTotal)}</span>
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="py-4 text-sm text-muted">Ningún beneficiario coincide.</p>
+          )}
         </section>
       </div>
     </>

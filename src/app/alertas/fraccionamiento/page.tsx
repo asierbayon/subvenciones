@@ -6,6 +6,9 @@ import { DatabaseMissingError, guard } from "@/lib/db";
 import { listFraccionamiento, parseAlertFilters, type AlertSearch } from "@/lib/alerts";
 import { formatDate, formatEuro } from "@/lib/format";
 
+const linkClass =
+  "font-medium text-accent underline decoration-accent/30 underline-offset-4 transition-colors hover:text-accent-strong hover:decoration-accent";
+
 const umbralLabel = (codigo: string, umbral: number) => {
   if (codigo === "de_minimis") {
     return `De minimis ${formatEuro(umbral)}`;
@@ -43,7 +46,10 @@ const FraccionamientoPage = async ({ searchParams }: { searchParams: Promise<Ale
       <PageIntro eyebrow="Fraccionamiento" title="Falta calcular este indicador">
         <p>
           El índice de concesiones está, pero todavía no se ha generado la tabla de alertas. En la raíz del proyecto:{" "}
-          <code>python3 pipeline/alerts.py fraccionamiento</code>.
+          <code className="rounded bg-subtle px-1.5 py-0.5 font-mono text-xs text-ink">
+            python3 pipeline/alerts.py fraccionamiento
+          </code>
+          .
         </p>
       </PageIntro>
     );
@@ -78,33 +84,37 @@ const FraccionamientoPage = async ({ searchParams }: { searchParams: Promise<Ale
       ) : (
         <ol className="grid gap-4">
           {loaded.alerts.map((alert) => (
-            <li key={alert.id} className="xp-card">
+            <li key={alert.id} className="rounded-xl border border-line bg-elev p-5 shadow-2xs">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="xp-heading">
+                <h2 className="font-display text-base font-semibold text-ink">
                   {alert.beneficiarioId ? (
-                    <Link href={`/beneficiarios/${alert.beneficiarioId}`} className="xp-link font-normal">
+                    <Link href={`/beneficiarios/${alert.beneficiarioId}`} className={linkClass}>
                       {alert.nombre}
                     </Link>
                   ) : (
                     alert.nombre
                   )}
                 </h2>
-                <p className="text-sm font-semibold tabular-nums">
+                <p className="text-sm font-semibold text-ink tabular-nums">
                   {Math.round(alert.puntuacion)} pts · {formatEuro(alert.importeSuma)}
                 </p>
               </div>
-              <p className="mt-1 text-sm text-muted">
-                {alert.nif} · {alert.organismo} · {alert.ccaa} · {umbralLabel(alert.umbralCodigo, alert.umbral)} ·{" "}
+              <p className="mt-1 text-xs text-muted sm:text-sm">
+                <span className="font-mono">{alert.nif}</span> · {alert.organismo} · {alert.ccaa} ·{" "}
+                {umbralLabel(alert.umbralCodigo, alert.umbral)} ·{" "}
                 {alert.regla === "suma" ? "por la suma" : "por la banda"}
               </p>
-              <p className="mt-3 text-sm leading-relaxed">{alert.motivo}</p>
-              <p className="mt-2 text-sm text-muted">
+              <p className="mt-3 text-sm leading-relaxed text-ink/90">{alert.motivo}</p>
+              <p className="mt-2 text-xs text-muted">
                 {formatDate(alert.fechaInicio)} – {formatDate(alert.fechaFin)} · {alert.n} concesiones
               </p>
-              <ul className="mt-3 xp-inset-list">
+              <ul className="mt-4 divide-y divide-line overflow-hidden rounded-lg border border-line bg-subtle/40">
                 {alert.items.map((item) => (
-                  <li key={item.concesionId} className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:items-baseline sm:justify-between">
-                    <Link href={`/concesiones/${item.concesionId}`} className="xp-link">
+                  <li
+                    key={item.concesionId}
+                    className="flex flex-col gap-1 px-3.5 py-2.5 text-sm sm:flex-row sm:items-baseline sm:justify-between"
+                  >
+                    <Link href={`/concesiones/${item.concesionId}`} className={linkClass}>
                       {formatEuro(item.importe)} el {formatDate(item.fecha)}
                     </Link>
                     <span className="text-muted sm:max-w-[60%] sm:text-right">{item.titulo}</span>

@@ -12,6 +12,9 @@ import { bdnsConvocatoriaUrl } from "@/lib/utils";
 
 type Params = { id: string };
 
+const linkClass =
+  "font-medium text-accent underline decoration-accent/30 underline-offset-4 transition-colors hover:text-accent-strong hover:decoration-accent";
+
 export const generateMetadata = async ({ params }: { params: Promise<Params> }): Promise<Metadata> => {
   const { id } = await params;
   const numeric = Number(id);
@@ -58,26 +61,26 @@ const ConcesionPage = async ({ params }: { params: Promise<Params> }) => {
         </p>
       </PageIntro>
       {row.esDuplicado ? (
-        <p className="mb-4 text-sm leading-relaxed text-terra">
+        <p className="mb-5 rounded-xl border border-terra-border bg-terra-soft px-4 py-3 text-sm leading-relaxed text-terra">
           Esta fila repite otra concesión con el mismo beneficiario, la misma convocatoria, la misma fecha, el mismo
           importe y el mismo instrumento. Los totales y las alertas cuentan solo{" "}
-          <Link href={`/concesiones/${row.canonId ?? row.id}`} className="xp-link">
+          <Link href={`/concesiones/${row.canonId ?? row.id}`} className={linkClass}>
             la primera
           </Link>
           .
         </p>
       ) : null}
-      <div className="mb-4 flex flex-wrap gap-2">
+      <div className="mb-5 flex flex-wrap gap-2">
         <Badge tone="accent">{row.instrumento}</Badge>
         <Badge>{row.tipoBeneficiario}</Badge>
         <Badge>{row.ccaa}</Badge>
       </div>
-      <dl className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <dl className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
         <Fact
           label="Beneficiario"
           value={
             row.beneficiarioId ? (
-              <Link href={`/beneficiarios/${row.beneficiarioId}`} className="xp-link font-normal">
+              <Link href={`/beneficiarios/${row.beneficiarioId}`} className={linkClass}>
                 {row.beneficiarioNombre}
               </Link>
             ) : (
@@ -85,8 +88,8 @@ const ConcesionPage = async ({ params }: { params: Promise<Params> }) => {
             )
           }
         />
-        <Fact label="NIF" value={row.nif || "—"} />
-        <Fact label="Ayuda equivalente" value={formatEuroExact(row.ayudaEquivalente)} />
+        <Fact label="NIF" value={<span className="font-mono">{row.nif || "—"}</span>} />
+        <Fact label="Ayuda equivalente" value={<span className="tabular-nums">{formatEuroExact(row.ayudaEquivalente)}</span>} />
         <Fact label="Organismo" value={row.organismo} />
         <Fact label="Administración" value={row.administracion || "—"} />
         <Fact label="Aplicación presupuestaria" value={row.aplicacion || "—"} />
@@ -95,7 +98,7 @@ const ConcesionPage = async ({ params }: { params: Promise<Params> }) => {
           label="Convocatoria"
           value={
             row.codigoBdns ? (
-              <Link href={`/convocatorias/${row.codigoBdns}`} className="xp-link font-normal">
+              <Link href={`/convocatorias/${row.codigoBdns}`} className={linkClass}>
                 {row.titulo}
               </Link>
             ) : (
@@ -110,7 +113,7 @@ const ConcesionPage = async ({ params }: { params: Promise<Params> }) => {
               {row.codigoBdns ? (
                 <ExternalLink href={bdnsConvocatoriaUrl(row.codigoBdns)}>Ficha oficial de la convocatoria</ExternalLink>
               ) : (
-                <span>Sin código BDNS</span>
+                <span className="font-normal text-muted">Sin código BDNS</span>
               )}
               {bases ? <ExternalLink href={bases}>Bases reguladoras</ExternalLink> : null}
             </span>

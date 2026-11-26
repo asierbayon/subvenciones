@@ -1,9 +1,9 @@
-export type XpLink = {
+export type NavItem = {
   href: string;
   label: string;
 };
 
-export const MAIN_LINKS: XpLink[] = [
+export const MAIN_LINKS: NavItem[] = [
   { href: "/", label: "Inicio" },
   { href: "/buscar", label: "Buscador" },
   { href: "/convocatorias", label: "Convocatorias" },
@@ -12,7 +12,7 @@ export const MAIN_LINKS: XpLink[] = [
   { href: "/alertas", label: "Alertas" },
 ];
 
-export const ALERT_LINKS: XpLink[] = [
+export const ALERT_LINKS: NavItem[] = [
   { href: "/alertas", label: "Todas las alertas" },
   { href: "/alertas/fraccionamiento", label: "Fraccionamiento" },
   { href: "/alertas/concentracion", label: "Concentración" },

@@ -1,23 +1,24 @@
 "use client";
 
-const ErrorIcon = () => (
-  <svg className="xp-icon" viewBox="0 0 32 32" aria-hidden="true">
-    <circle cx="16" cy="16" r="13" fill="#e24b4b" stroke="#000" strokeWidth="1.2" />
-    <path d="M10.5 10.5 21.5 21.5M21.5 10.5 10.5 21.5" stroke="#fff" strokeWidth="2.4" />
-  </svg>
-);
+import { AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 const ErrorView = ({ reset }: { error: Error; reset: () => void }) => (
-  <section className="xp-balloon max-w-xl">
-    <ErrorIcon />
-    <div>
-      <h1 className="xp-balloon-title">No se ha podido cargar esta vista</h1>
-      <p className="mt-1">
-        La consulta al índice local ha fallado. Puedes reintentar. Si acabas de reconstruir los datos, recarga la página.
-      </p>
-      <button type="button" onClick={reset} className="xp-button xp-button-primary mt-3">
-        Reintentar
-      </button>
+  <section className="mx-auto my-10 max-w-lg rounded-xl border border-terra-border bg-elev p-6 shadow-xs">
+    <div className="flex items-start gap-4">
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-terra-soft text-terra">
+        <AlertCircle aria-hidden="true" size={20} />
+      </span>
+      <div>
+        <h1 className="font-display text-lg font-bold text-ink">No se ha podido cargar esta vista</h1>
+        <p className="mt-1.5 text-sm leading-relaxed text-muted">
+          La consulta al índice local ha fallado. Puedes reintentar. Si acabas de reconstruir los datos, recarga la
+          página.
+        </p>
+        <Button type="button" onClick={reset} className="mt-4">
+          Reintentar
+        </Button>
+      </div>
     </div>
   </section>
 );
