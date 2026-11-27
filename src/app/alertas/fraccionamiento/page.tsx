@@ -1,25 +1,57 @@
 import Link from "next/link";
-import { AlertBanner } from "@/components/alert-banner";
+import { AlertBanner, type MethodologyItem } from "@/components/alert-banner";
 import { AlertFilterForm, AlertPager } from "@/components/alert-filters";
+import {
+  AlertCard,
+  AlertDisclosure,
+  AlertEvidenceList,
+  AlertFactStrip,
+  AlertMetaRow,
+  AlertMeter,
+  AlertResultsBar,
+  alertLinkClass,
+} from "@/components/alert-ui";
 import { EmptyState, PageIntro, SetupNeeded } from "@/components/setup-needed";
+import { Badge } from "@/components/ui/badge";
 import { DatabaseMissingError, guard } from "@/lib/db";
 import { listFraccionamiento, parseAlertFilters, type AlertSearch } from "@/lib/alerts";
-import { formatDate, formatEuro } from "@/lib/format";
+import { formatDate, formatEuro, formatNumber } from "@/lib/format";
 
-const linkClass =
-  "font-medium text-accent underline decoration-accent/30 underline-offset-4 transition-colors hover:text-accent-strong hover:decoration-accent";
+const METHODOLOGY: MethodologyItem[] = [
+  {
+    label: "Reglas de umbral",
+    text: "Cada ayuda entre el 90 % y el 100 % del de minimis (200.000 €) en 90 días, o piezas de al menos 50.000 € que suman 190.000–200.000 € en 180 días.",
+  },
+  {
+    label: "Filtro de rareza",
+    text: "Misma convocatoria y mismo organismo. La mediana del bloque debe superar el percentil 75 de lo que ese organismo concede a entidades privadas.",
+  },
+  {
+    label: "Qué queda fuera",
+    text: "NIF públicos/asociativos (P, Q, S, R, G), universidades, importes idénticos, pagos de convocatorias distintas y meses con más de 3 beneficiarios en el mismo patrón.",
+  },
+];
 
 const umbralLabel = (codigo: string, umbral: number) => {
   if (codigo === "de_minimis") {
-    return `De minimis ${formatEuro(umbral)}`;
+    return `De minimis (${formatEuro(umbral)})`;
   }
   if (codigo === "contrato_menor_servicios") {
-    return `Referencia ${formatEuro(umbral)} (menor de servicios)`;
+    return `Menor servicios (${formatEuro(umbral)})`;
   }
   if (codigo === "contrato_menor_obras") {
-    return `Referencia ${formatEuro(umbral)} (menor de obras)`;
+    return `Menor obras (${formatEuro(umbral)})`;
   }
   return formatEuro(umbral);
+};
+
+const daysBetween = (start: string, end: string) => {
+  const from = Date.parse(start);
+  const to = Date.parse(end);
+  if (Number.isNaN(from) || Number.isNaN(to)) {
+    return null;
+  }
+  return Math.max(0, Math.round((to - from) / 86_400_000));
 };
 
 const FraccionamientoPage = async ({ searchParams }: { searchParams: Promise<AlertSearch> }) => {
@@ -46,10 +78,7 @@ const FraccionamientoPage = async ({ searchParams }: { searchParams: Promise<Ale
       <PageIntro eyebrow="Fraccionamiento" title="Falta calcular este indicador">
         <p>
           El índice de concesiones está, pero todavía no se ha generado la tabla de alertas. En la raíz del proyecto:{" "}
-          <code className="rounded bg-subtle px-1.5 py-0.5 font-mono text-xs text-ink">
-            python3 pipeline/alerts.py fraccionamiento
-          </code>
-          .
+          <code>python3 pipeline/alerts.py fraccionamiento</code>.
         </p>
       </PageIntro>
     );
@@ -58,19 +87,11 @@ const FraccionamientoPage = async ({ searchParams }: { searchParams: Promise<Ale
   return (
     <>
       <PageIntro eyebrow="Fraccionamiento" title="Varias ayudas justo por debajo de un umbral">
-        <p>
-          Solo entidades privadas (quedan fuera los NIF P, Q, S, R y las fundaciones y asociaciones G) y solo si las
-          ayudas salen de la misma convocatoria. Cada importe está entre el 90 % y el 100 % de 200.000 € en 90 días, o
-          varias piezas de al menos 50.000 € suman entre 190.000 € y 200.000 € en 180 días. Ese techo es el de minimis.
-          Los 15.000 € y 40.000 € del contrato menor no son un tope de la subvención y no se usan. Además, la mediana del
-          grupo tiene que superar lo que ese organismo suele conceder a privados (percentil 75). Se descartan importes
-          idénticos, pagos de convocatorias distintas, universidades, y los meses en los que el organismo repite el
-          patrón con más de tres beneficiarios: eso parece un programa, no un fraccionamiento.
-        </p>
+        <p>Entidades privadas que encadenan ayudas de la misma convocatoria muy cerca del límite de minimis.</p>
       </PageIntro>
-      <AlertBanner>
-        Un mismo beneficiario puede cobrar varias ayudas legales. El indicador solo señala la cercanía al umbral y la
-        repetición. Abre cada concesión para ver el expediente.
+      <AlertBanner methodology={METHODOLOGY}>
+        Un beneficiario puede cobrar varias ayudas regulares. Esta señal solo ordena cercanía al umbral y concentración
+        en el tiempo.
       </AlertBanner>
       <AlertFilterForm
         action="/alertas/fraccionamiento"
@@ -79,50 +100,110 @@ const FraccionamientoPage = async ({ searchParams }: { searchParams: Promise<Ale
         anios={loaded.anios}
         organismos={loaded.organismos}
       />
+      <AlertResultsBar
+        total={loaded.total}
+        shown={loaded.alerts.length}
+        page={filters.page}
+        pageSize={loaded.pageSize}
+      />
       {loaded.alerts.length === 0 ? (
         <EmptyState>Ningún indicador con estos filtros.</EmptyState>
       ) : (
         <ol className="grid gap-4">
-          {loaded.alerts.map((alert) => (
-            <li key={alert.id} className="rounded-xl border border-line bg-elev p-5 shadow-2xs">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="font-display text-base font-semibold text-ink">
-                  {alert.beneficiarioId ? (
-                    <Link href={`/beneficiarios/${alert.beneficiarioId}`} className={linkClass}>
-                      {alert.nombre}
-                    </Link>
-                  ) : (
-                    alert.nombre
-                  )}
-                </h2>
-                <p className="text-sm font-semibold text-ink tabular-nums">
-                  {Math.round(alert.puntuacion)} pts · {formatEuro(alert.importeSuma)}
-                </p>
-              </div>
-              <p className="mt-1 text-xs text-muted sm:text-sm">
-                <span className="font-mono">{alert.nif}</span> · {alert.organismo} · {alert.ccaa} ·{" "}
-                {umbralLabel(alert.umbralCodigo, alert.umbral)} ·{" "}
-                {alert.regla === "suma" ? "por la suma" : "por la banda"}
-              </p>
-              <p className="mt-3 text-sm leading-relaxed text-ink/90">{alert.motivo}</p>
-              <p className="mt-2 text-xs text-muted">
-                {formatDate(alert.fechaInicio)} – {formatDate(alert.fechaFin)} · {alert.n} concesiones
-              </p>
-              <ul className="mt-4 divide-y divide-line overflow-hidden rounded-lg border border-line bg-subtle/40">
-                {alert.items.map((item) => (
-                  <li
-                    key={item.concesionId}
-                    className="flex flex-col gap-1 px-3.5 py-2.5 text-sm sm:flex-row sm:items-baseline sm:justify-between"
-                  >
-                    <Link href={`/concesiones/${item.concesionId}`} className={linkClass}>
-                      {formatEuro(item.importe)} el {formatDate(item.fecha)}
-                    </Link>
-                    <span className="text-muted sm:max-w-[60%] sm:text-right">{item.titulo}</span>
-                  </li>
-                ))}
-              </ul>
-            </li>
-          ))}
+          {loaded.alerts.map((alert) => {
+            const spanDays = daysBetween(alert.fechaInicio, alert.fechaFin);
+            const avgAmount = alert.n > 0 ? alert.importeSuma / alert.n : alert.importeSuma;
+            const thresholdRef = alert.regla === "suma" ? alert.importeSuma : avgAmount;
+            const proximityPct = alert.umbral > 0 ? Math.min(100, (thresholdRef / alert.umbral) * 100) : 0;
+
+            return (
+              <li key={alert.id}>
+                <AlertCard
+                  tone="terra"
+                  badges={
+                    <>
+                      <Badge tone="terra">{umbralLabel(alert.umbralCodigo, alert.umbral)}</Badge>
+                      <Badge tone="accent">
+                        {alert.regla === "suma" ? "Suma cerca del tope" : "Piezas en banda 90–100 %"}
+                      </Badge>
+                      <Badge>{Math.round(alert.puntuacion)}/100 pts</Badge>
+                    </>
+                  }
+                  title={
+                    alert.beneficiarioId ? (
+                      <Link href={`/beneficiarios/${alert.beneficiarioId}`} className={alertLinkClass}>
+                        {alert.nombre}
+                      </Link>
+                    ) : (
+                      alert.nombre
+                    )
+                  }
+                  subtitle={
+                    <AlertMetaRow
+                      items={[alert.organismo, alert.ccaa, <span key="nif" className="font-mono">{alert.nif}</span>]}
+                    />
+                  }
+                  metric={formatEuro(alert.importeSuma)}
+                  metricLabel={`${formatNumber(alert.n)} concesiones`}
+                  footer={
+                    <>
+                      {alert.items.length > 0 ? (
+                        <AlertDisclosure label="Ver concesiones del bloque" count={alert.items.length}>
+                          <AlertEvidenceList
+                            items={alert.items.map((item) => ({
+                              key: String(item.concesionId),
+                              amount: item.importe,
+                              date: item.fecha,
+                              title: item.titulo,
+                              href: `/concesiones/${item.concesionId}`,
+                            }))}
+                          />
+                        </AlertDisclosure>
+                      ) : null}
+                      <AlertDisclosure label="Explicación detallada">
+                        <p className="text-xs leading-relaxed text-muted">{alert.motivo}</p>
+                      </AlertDisclosure>
+                    </>
+                  }
+                >
+                  <div className="grid gap-3">
+                    <AlertMeter
+                      percent={proximityPct}
+                      tone="terra"
+                      label={alert.regla === "suma" ? "Suma frente al umbral" : "Importe medio frente al umbral"}
+                      valueLabel={`${Math.round(proximityPct)} % de ${formatEuro(alert.umbral)}`}
+                      ariaLabel={`Cercanía al umbral: ${Math.round(proximityPct)} por ciento`}
+                    />
+                    <AlertFactStrip
+                      columns={4}
+                      items={[
+                        {
+                          label: "Ventana temporal",
+                          value: spanDays !== null ? `${formatNumber(spanDays)} días` : "—",
+                          hint: `${formatDate(alert.fechaInicio)} – ${formatDate(alert.fechaFin)}`,
+                        },
+                        {
+                          label: "Concesiones",
+                          value: formatNumber(alert.n),
+                          hint: "Misma convocatoria",
+                        },
+                        {
+                          label: "Importe medio",
+                          value: formatEuro(avgAmount),
+                          highlight: true,
+                        },
+                        {
+                          label: "Habitual organismo (p75)",
+                          value: alert.medianaOrganismo > 0 ? formatEuro(alert.medianaOrganismo) : "—",
+                          hint: "Referencia a privados",
+                        },
+                      ]}
+                    />
+                  </div>
+                </AlertCard>
+              </li>
+            );
+          })}
         </ol>
       )}
       <AlertPager path="/alertas/fraccionamiento" filters={filters} total={loaded.total} pageSize={loaded.pageSize} />

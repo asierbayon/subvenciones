@@ -1,13 +1,26 @@
 import Link from "next/link";
-import { AlertBanner } from "@/components/alert-banner";
+import { AlertBanner, type MethodologyItem } from "@/components/alert-banner";
 import { AlertFilterForm, AlertPager } from "@/components/alert-filters";
+import { AlertResultsBar, InlinePercentBar, alertLinkClass } from "@/components/alert-ui";
 import { EmptyState, PageIntro, SetupNeeded } from "@/components/setup-needed";
 import { listDirecta, parseAlertFilters, type AlertSearch } from "@/lib/alerts";
 import { DatabaseMissingError, guard } from "@/lib/db";
 import { formatNumber } from "@/lib/format";
 
-const linkClass =
-  "font-medium text-accent underline decoration-accent/30 underline-offset-4 transition-colors hover:text-accent-strong hover:decoration-accent";
+const METHODOLOGY: MethodologyItem[] = [
+  {
+    label: "Proxy de texto",
+    text: "El volcado de la BDNS no incluye el campo de procedimiento. Se buscan «concesión directa», «concessió directa» y «nominativ» en el título.",
+  },
+  {
+    label: "Qué cubre",
+    text: "Solo subvenciones dinerarias. Ordena organismos por volumen y cuota de concesiones con esa mención en el título.",
+  },
+  {
+    label: "Limitación",
+    text: "Las ayudas directas que no mencionan el procedimiento en el título no entran en este recuento.",
+  },
+];
 
 const DirectaPage = async ({ searchParams }: { searchParams: Promise<AlertSearch> }) => {
   const filters = parseAlertFilters(await searchParams);
@@ -32,11 +45,7 @@ const DirectaPage = async ({ searchParams }: { searchParams: Promise<AlertSearch
     return (
       <PageIntro eyebrow="Concesión directa" title="Falta calcular este indicador">
         <p>
-          Ejecuta{" "}
-          <code className="rounded bg-subtle px-1.5 py-0.5 font-mono text-xs text-ink">
-            python3 pipeline/alerts.py directa
-          </code>
-          .
+          Ejecuta <code>python3 pipeline/alerts.py directa</code>.
         </p>
       </PageIntro>
     );
@@ -45,16 +54,10 @@ const DirectaPage = async ({ searchParams }: { searchParams: Promise<AlertSearch
   return (
     <>
       <PageIntro eyebrow="Concesión directa" title="Un proxy leído del título, no un campo de la BDNS">
-        <p>
-          El volcado no dice si la ayuda fue de concurrencia competitiva o de concesión directa. Aquí se cuenta, entre
-          las subvenciones dinerarias de cada organismo, cuántos títulos contienen «concesión directa» (también en
-          catalán, «concessió directa») o «nominativ». Es una lectura del texto, y se le escapan las que no lo escriben
-          en el título.
-        </p>
+        <p>Organismos cuyas convocatorias mencionan concesión directa o subvención nominativa en el título.</p>
       </PageIntro>
-      <AlertBanner>
-        Una subvención nominativa está prevista en la ley. Que el título lo diga no es una irregularidad: es la pista
-        más explícita que este fichero deja sobre el procedimiento.
+      <AlertBanner methodology={METHODOLOGY}>
+        La concesión directa o nominativa está prevista en la ley. Es solo la pista textual disponible en este volcado.
       </AlertBanner>
       <AlertFilterForm
         action="/alertas/directa"
@@ -62,6 +65,14 @@ const DirectaPage = async ({ searchParams }: { searchParams: Promise<AlertSearch
         ccaa={loaded.ccaa}
         anios={[]}
         organismos={loaded.organismos}
+      />
+      <AlertResultsBar
+        total={loaded.total}
+        shown={loaded.rows.length}
+        page={filters.page}
+        pageSize={loaded.pageSize}
+        singular="organismo"
+        plural="organismos"
       />
       {loaded.rows.length === 0 ? (
         <EmptyState>Ningún organismo con estos filtros.</EmptyState>
@@ -85,17 +96,24 @@ const DirectaPage = async ({ searchParams }: { searchParams: Promise<AlertSearch
               {loaded.rows.map((row) => (
                 <tr key={row.id} className="transition-colors hover:bg-highlight/60">
                   <th scope="row" className="px-4 py-3 text-left font-medium">
-                    <Link href={`/concesiones?organismo=${encodeURIComponent(row.organismo)}`} className={linkClass}>
+                    <Link
+                      href={`/concesiones?organismo=${encodeURIComponent(row.organismo)}`}
+                      className={alertLinkClass}
+                    >
                       {row.organismo}
                     </Link>
                   </th>
                   <td className="px-4 py-3 text-muted">{row.ccaa}</td>
-                  <td className="px-4 py-3 text-right font-semibold tabular-nums">
-                    {(row.cuota * 100).toLocaleString("es-ES", { maximumFractionDigits: 1 })} %
+                  <td className="px-4 py-3 text-right">
+                    <InlinePercentBar
+                      ratio={row.cuota}
+                      label={`${(row.cuota * 100).toLocaleString("es-ES", { maximumFractionDigits: 1 })} %`}
+                      tone={row.cuota >= 0.5 ? "terra" : "accent"}
+                    />
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-muted">{formatNumber(row.nDirecta)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-muted">{formatNumber(row.nNominativa)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-muted">{formatNumber(row.n)}</td>
+                  <td className="px-4 py-3 text-right text-muted tabular-nums">{formatNumber(row.nDirecta)}</td>
+                  <td className="px-4 py-3 text-right text-muted tabular-nums">{formatNumber(row.nNominativa)}</td>
+                  <td className="px-4 py-3 text-right font-semibold text-ink tabular-nums">{formatNumber(row.n)}</td>
                 </tr>
               ))}
             </tbody>
