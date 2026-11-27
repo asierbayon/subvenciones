@@ -468,6 +468,7 @@ export const searchConcesiones = async (
     clauses.push("c.id_convocatoria = ?");
     params.push(scope.convocatoriaId);
   }
+  const unfiltered = !fts && clauses.length === 0;
   if (await hasDuplicateTable()) {
     clauses.push("NOT EXISTS (SELECT 1 FROM concesion_dup d WHERE d.concesion_id = c.id)");
   }
@@ -494,7 +495,6 @@ export const searchConcesiones = async (
     sortFrom = `${from} JOIN lut_organismo o ON o.id = c.organismo_id`;
   }
   const where = whereSql(clauses);
-  const unfiltered = !fts && clauses.length === 0;
   const total = unfiltered
     ? (await getMeta()).nConcesiones
     : asNumber((await queryGet(`SELECT COUNT(*) AS n ${from} ${where}`, params))?.n ?? 0);

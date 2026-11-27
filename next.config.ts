@@ -9,6 +9,23 @@ const nextConfig: NextConfig = {
       },
     },
   },
+  async headers() {
+    if (process.env.NODE_ENV !== "production") {
+      return [];
+    }
+    return [
+      {
+        source: "/:path*",
+        missing: [{ type: "header", key: "RSC" }],
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=120, stale-while-revalidate=600",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

@@ -79,17 +79,3 @@ body {
   background-color: color-mix(in srgb, var(--accent) 22%, transparent);
   color: var(--ink);
 }
-
-@keyframes loading-slide {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(300%);
-  }
-}
-
-.loading-bar-fill {
-  width: 35%;
-  animation: loading-slide 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-}

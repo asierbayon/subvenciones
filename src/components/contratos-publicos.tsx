@@ -12,6 +12,7 @@ import { ExternalLink } from "@/components/facts";
 import { Badge } from "@/components/ui/badge";
 import { formatDate, formatEuro, formatNumber } from "@/lib/format";
 import {
+  alertasDeConvocatoria,
   alertasDeOrganismo,
   alertasDePar,
   contratosDeNif,
@@ -286,9 +287,46 @@ type ContratosPublicosProps = {
   nif?: string;
   organismo?: string;
   exact?: boolean;
+  convocatoriaId?: number;
 };
 
-export const ContratosPublicos = async ({ nif, organismo, exact = false }: ContratosPublicosProps) => {
+export const ContratosPublicos = async ({
+  nif,
+  organismo,
+  exact = false,
+  convocatoriaId,
+}: ContratosPublicosProps) => {
+  if (convocatoriaId) {
+    const loaded = await alertasDeConvocatoria(convocatoriaId);
+    if (!loaded) {
+      return <Missing />;
+    }
+    if (loaded.alerts.length === 0) {
+      return null;
+    }
+    return (
+      <section className="mt-10">
+        <h2 className="font-display text-xl font-bold tracking-tight text-ink">Contratos de estos beneficiarios</h2>
+        <p className="mt-1 text-xs text-muted sm:text-sm">
+          Indicador, no prueba. Solo entran cruces ligados a una concesión de esta convocatoria, no todos los contratos
+          del organismo.
+        </p>
+        <ol className="mt-4 grid gap-4">
+          {loaded.alerts.map((alert) => (
+            <li key={alert.id}>
+              <ContratoAlertCard alert={alert} />
+            </li>
+          ))}
+        </ol>
+        {loaded.total > loaded.alerts.length ? (
+          <p className="mt-3 text-sm text-muted">
+            {formatNumber(loaded.total)} cruces con beneficiarios de esta convocatoria. Se muestran los más próximos.
+          </p>
+        ) : null}
+      </section>
+    );
+  }
+
   if (nif && organismo) {
     const loaded = await alertasDePar(nif, organismo);
     if (!loaded) {

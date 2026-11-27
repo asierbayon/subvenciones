@@ -19,6 +19,7 @@ type DataViewProps<T> = {
   rowKey: (row: T) => string;
   caption: string;
   empty?: string;
+  defaultSort?: string;
 };
 
 export const DataView = <T,>({
@@ -29,6 +30,7 @@ export const DataView = <T,>({
   rowKey,
   caption,
   empty = "Ningún resultado con estos filtros. Prueba a quitar algún criterio.",
+  defaultSort = "fecha",
 }: DataViewProps<T>) => {
   if (rows.length === 0) {
     return <EmptyState>{empty}</EmptyState>;
@@ -57,7 +59,7 @@ export const DataView = <T,>({
                   >
                     {column.sortKey ? (
                       <Link
-                        href={`${path}${toQuery(filters, { sort: column.sortKey, dir: nextDir, page: 1 })}`}
+                        href={`${path}${toQuery(filters, { sort: column.sortKey, dir: nextDir, page: 1 }, defaultSort)}`}
                         className="inline-flex items-center gap-1 transition-colors hover:text-ink"
                       >
                         {column.header}

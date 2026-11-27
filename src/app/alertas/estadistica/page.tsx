@@ -159,8 +159,8 @@ const EstadisticaPage = async ({ searchParams }: { searchParams: Promise<AlertSe
       <EstadisticaShell
         filters={active}
         kind={kind}
-        ccaa={[]}
-        organismos={[]}
+        ccaa={data.ccaa}
+        organismos={data.organismos}
         total={data.total}
         shown={data.rows.length}
         pageSize={data.pageSize}

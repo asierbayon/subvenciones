@@ -143,7 +143,6 @@ const ConvocatoriaPage = async ({
           Hay {loaded.found.duplicates} filas con este código BDNS. Se muestra la que acumula más concesiones.
         </p>
       ) : null}
-      <ContratosPublicos organismo={row.organismo} exact />
       <h2 className="mt-10 font-display text-xl font-bold tracking-tight text-ink">Concesiones de esta convocatoria</h2>
       <div className="mt-4">
         <DataView
@@ -157,6 +156,7 @@ const ConvocatoriaPage = async ({
         />
         <PaginationBar path={path} filters={cleared} total={loaded.grants.total} pageSize={loaded.grants.pageSize} />
       </div>
+      <ContratosPublicos convocatoriaId={row.id} />
     </>
   );
 };

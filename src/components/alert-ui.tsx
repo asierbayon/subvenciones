@@ -217,8 +217,8 @@ export const InlinePercentBar = ({ ratio, label, tone = "accent" }: InlinePercen
   const fillClass = tone === "terra" ? "bg-terra" : "bg-accent";
 
   return (
-    <div className="inline-flex items-center justify-end gap-2.5">
-      <span className="tabular-nums">{label}</span>
+    <div className="inline-flex items-center justify-end gap-2.5 whitespace-nowrap">
+      <span className="shrink-0 tabular-nums">{label}</span>
       <span className="h-1.5 w-16 overflow-hidden rounded-full bg-subtle ring-1 ring-inset ring-line" aria-hidden="true">
         <span className={cn("block h-full rounded-full", fillClass)} style={{ width: `${Math.max(4, clamped)}%` }} />
       </span>

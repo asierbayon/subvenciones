@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { CleanGetForm } from "@/components/clean-get-form";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { alertQuery, type AlertFilters } from "@/lib/alerts";
@@ -54,7 +55,7 @@ export const AlertFilterForm = ({
   const resetHref = clearHref ?? action;
 
   return (
-    <form action={action} method="get" className="mb-5">
+    <CleanGetForm action={action} className="mb-5">
       {hiddenFields
         ? Object.entries(hiddenFields).map(([name, value]) => (
             <input key={name} type="hidden" name={name} value={value} />
@@ -145,7 +146,7 @@ export const AlertFilterForm = ({
           ) : null}
         </div>
       </fieldset>
-    </form>
+    </CleanGetForm>
   );
 };
 

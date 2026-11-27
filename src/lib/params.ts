@@ -55,7 +55,7 @@ export const parseFilters = (params: SearchParams, fallbackSort = "fecha"): Filt
   };
 };
 
-export const toQuery = (filters: Filters, patch: Partial<Filters> = {}) => {
+export const toQuery = (filters: Filters, patch: Partial<Filters> = {}, defaultSort = "fecha") => {
   const next = { ...filters, ...patch };
   const params = new URLSearchParams();
   const write = (key: string, value: string) => {
@@ -82,10 +82,10 @@ export const toQuery = (filters: Filters, patch: Partial<Filters> = {}) => {
   if (next.page > 1) {
     params.set("page", String(next.page));
   }
-  if (next.sort) {
+  if (next.sort && next.sort !== defaultSort) {
     params.set("sort", next.sort);
   }
-  if (next.dir) {
+  if (next.dir === "asc") {
     params.set("dir", next.dir);
   }
   const query = params.toString();

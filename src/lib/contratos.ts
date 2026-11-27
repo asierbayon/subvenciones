@@ -388,6 +388,79 @@ const rank = (alert: ContratoAlert) => {
   return 3;
 };
 
+const loadAlertRows = (db: Awaited<ReturnType<typeof getDb>>, rows: Record<string, SQLOutputValue>[]) => {
+  const alerts = rows.map(mapAlert);
+  const ids = alerts.map((alert) => alert.id);
+  if (ids.length === 0) {
+    return alerts;
+  }
+  const marks = ids.map(() => "?").join(", ");
+  const itemRows = db
+    .prepare(`SELECT * FROM alert_contrato_item WHERE alert_id IN (${marks}) ORDER BY fecha`)
+    .all(...ids) as Record<string, SQLOutputValue>[];
+  const grouped = new Map<number, ContratoItem[]>();
+  for (const item of itemRows) {
+    const alertId = asNumber(item.alert_id);
+    const list = grouped.get(alertId) ?? [];
+    list.push(mapItem(item));
+    grouped.set(alertId, list);
+  }
+  for (const alert of alerts) {
+    alert.items = grouped.get(alert.id) ?? [];
+  }
+  attachPiezas(db, alerts);
+  return alerts;
+};
+
+const selectAlerts = (
+  db: Awaited<ReturnType<typeof getDb>>,
+  where: string,
+  params: SQLInputValue[],
+  limit: number,
+) => {
+  const sql = (order: string) => `SELECT * FROM alert_contrato ${where} ${order} LIMIT ?`;
+  try {
+    return db.prepare(sql(alertOrder)).all(...params, limit) as Record<string, SQLOutputValue>[];
+  } catch (error) {
+    if (!isMissingColumn(error)) {
+      throw error;
+    }
+    return db.prepare(sql(alertOrderLegacy)).all(...params, limit) as Record<string, SQLOutputValue>[];
+  }
+};
+
+export const alertasDeConvocatoria = async (convocatoriaId: number) => {
+  const db = await getDb();
+  const where = `WHERE id IN (
+    SELECT i.alert_id FROM alert_contrato_item i
+    JOIN concesion c ON c.id = i.concesion_id
+    WHERE c.id_convocatoria = ?
+  )`;
+  try {
+    const total = asNumber(
+      (
+        db
+          .prepare(
+            `SELECT COUNT(*) AS n FROM alert_contrato a
+             WHERE EXISTS (
+               SELECT 1 FROM alert_contrato_item i
+               JOIN concesion c ON c.id = i.concesion_id
+               WHERE i.alert_id = a.id AND c.id_convocatoria = ?
+             )`,
+          )
+          .get(convocatoriaId) as { n: number }
+      ).n,
+    );
+    const rows = selectAlerts(db, where, [convocatoriaId], 8);
+    return { total, alerts: loadAlertRows(db, rows) };
+  } catch (error) {
+    if (missingTable(error)) {
+      return null;
+    }
+    throw error;
+  }
+};
+
 export const alertasDeOrganismo = async (organismo: string, exact: boolean) => {
   const folded = fold(organismo);
   if (!folded) {
@@ -408,25 +481,7 @@ export const alertasDeOrganismo = async (organismo: string, exact: boolean) => {
          LIMIT 8`,
       )
       .all(param) as Record<string, SQLOutputValue>[];
-    const alerts = rows.map(mapAlert);
-    const ids = alerts.map((alert) => alert.id);
-    if (ids.length > 0) {
-      const marks = ids.map(() => "?").join(", ");
-      const itemRows = db
-        .prepare(`SELECT * FROM alert_contrato_item WHERE alert_id IN (${marks}) ORDER BY fecha`)
-        .all(...ids) as Record<string, SQLOutputValue>[];
-      const grouped = new Map<number, ContratoItem[]>();
-      for (const item of itemRows) {
-        const alertId = asNumber(item.alert_id);
-        const list = grouped.get(alertId) ?? [];
-        list.push(mapItem(item));
-        grouped.set(alertId, list);
-      }
-      for (const alert of alerts) {
-        alert.items = grouped.get(alert.id) ?? [];
-      }
-    }
-    attachPiezas(db, alerts);
+    const alerts = loadAlertRows(db, rows);
     return { total, alerts, organismo };
   } catch (error) {
     if (missingTable(error)) {

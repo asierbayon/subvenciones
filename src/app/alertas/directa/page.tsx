@@ -14,7 +14,7 @@ const METHODOLOGY: MethodologyItem[] = [
   },
   {
     label: "Qué cubre",
-    text: "Solo subvenciones dinerarias. Ordena organismos por volumen y cuota de concesiones con esa mención en el título.",
+    text: "Solo subvenciones dinerarias. La tabla ordena por la cuota del título y, si empatan, por el número de menciones.",
   },
   {
     label: "Limitación",

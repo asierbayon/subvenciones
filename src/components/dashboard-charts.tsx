@@ -3,39 +3,65 @@ import { formatCompactEuro, formatEuro, formatNumber, shorten } from "@/lib/form
 type Point = { label: string; n: number; importe: number };
 type YearPoint = { anio: number; n: number; importe: number };
 
+const PARTIAL_YEAR = 2022;
+
 const maxImporte = (rows: { importe: number }[]) =>
   rows.reduce((highest, row) => (row.importe > highest ? row.importe : highest), 0);
+
+const yearTick = (anio: number) => {
+  if (anio !== PARTIAL_YEAR) {
+    return <span className="text-center text-xs font-semibold text-ink tabular-nums">{anio}</span>;
+  }
+  return (
+    <span className="text-center text-xs font-semibold text-ink tabular-nums">
+      {anio}
+      <abbr title="Parcial: el volcado de concesiones termina en marzo de 2022" className="text-muted no-underline">
+        *
+      </abbr>
+    </span>
+  );
+};
 
 export const YearChart = ({ data }: { data: YearPoint[] }) => {
   const highest = maxImporte(data);
   if (data.length === 0 || highest <= 0) {
     return <p className="text-sm text-muted">Sin importes en este periodo.</p>;
   }
+  const showsPartialYear = data.some((item) => item.anio === PARTIAL_YEAR);
 
   return (
-    <div
-      className="mt-4 flex h-64 items-end gap-3 border-b border-line pb-3"
-      role="img"
-      aria-label="Importe concedido por año"
-    >
-      {data.map((item) => {
-        const height = Math.max(6, Math.round((item.importe / highest) * 100));
-        return (
-          <div key={item.anio} className="group flex h-full min-w-0 flex-1 flex-col justify-end gap-1.5">
-            <span className="truncate text-center text-[11px] font-medium text-muted tabular-nums">
-              {formatCompactEuro(item.importe)}
-            </span>
-            <div className="flex min-h-0 flex-1 items-end">
-              <div
-                className="w-full rounded-t-md bg-accent/85 transition-colors group-hover:bg-accent"
-                style={{ height: `${height}%` }}
-              />
+    <>
+      <div
+        className="mt-4 flex h-64 items-end gap-3 border-b border-line pb-3"
+        role="img"
+        aria-label={
+          showsPartialYear
+            ? "Importe concedido por año. 2022 es parcial porque el volcado termina en marzo."
+            : "Importe concedido por año"
+        }
+      >
+        {data.map((item) => {
+          const height = Math.max(6, Math.round((item.importe / highest) * 100));
+          return (
+            <div key={item.anio} className="group flex h-full min-w-0 flex-1 flex-col justify-end gap-1.5">
+              <span className="truncate text-center text-[11px] font-medium text-muted tabular-nums">
+                {formatCompactEuro(item.importe)}
+              </span>
+              <div className="flex min-h-0 flex-1 items-end">
+                <div
+                  className="w-full rounded-t-md bg-accent/85 transition-colors group-hover:bg-accent"
+                  style={{ height: `${height}%` }}
+                />
+              </div>
+              {yearTick(item.anio)}
             </div>
-            <span className="text-center text-xs font-semibold text-ink tabular-nums">{item.anio}</span>
-          </div>
-        );
-      })}
-    </div>
+          );
+        })}
+      </div>
+      {showsPartialYear ? (
+        <p className="mt-2 text-xs text-muted">* 2022 es parcial: el volcado de concesiones termina en marzo.</p>
+      ) : null}
+    </>
   );
 };
 

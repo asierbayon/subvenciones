@@ -8,6 +8,7 @@ type PaginationBarProps = {
   filters: Filters;
   total: number;
   pageSize: number;
+  defaultSort?: string;
 };
 
 const pagerButtonClass =
@@ -16,13 +17,13 @@ const pagerButtonClass =
 const pagerDisabledClass =
   "inline-flex h-9 items-center gap-1.5 rounded-lg border border-line bg-subtle/60 px-3 text-sm font-medium text-muted/60 cursor-not-allowed";
 
-export const PaginationBar = ({ path, filters, total, pageSize }: PaginationBarProps) => {
+export const PaginationBar = ({ path, filters, total, pageSize, defaultSort = "fecha" }: PaginationBarProps) => {
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const page = Math.min(filters.page, pages);
   const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(total, page * pageSize);
-  const previousHref = page > 1 ? `${path}${toQuery(filters, { page: page - 1 })}` : null;
-  const nextHref = page < pages ? `${path}${toQuery(filters, { page: page + 1 })}` : null;
+  const previousHref = page > 1 ? `${path}${toQuery(filters, { page: page - 1 }, defaultSort)}` : null;
+  const nextHref = page < pages ? `${path}${toQuery(filters, { page: page + 1 }, defaultSort)}` : null;
   const capped = page >= 400 && total > page * pageSize;
 
   return (

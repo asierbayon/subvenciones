@@ -74,6 +74,7 @@ const BeneficiariosPage = async ({ searchParams }: { searchParams: Promise<Searc
         showImporte={false}
         showTipo
         showCcaa
+        defaultSort="importe"
       />
       <DataView
         rows={loaded.page.rows}
@@ -82,8 +83,15 @@ const BeneficiariosPage = async ({ searchParams }: { searchParams: Promise<Searc
         filters={filters}
         rowKey={(row) => String(row.id)}
         caption="Beneficiarios de concesiones"
+        defaultSort="importe"
       />
-      <PaginationBar path="/beneficiarios" filters={filters} total={loaded.page.total} pageSize={loaded.page.pageSize} />
+      <PaginationBar
+        path="/beneficiarios"
+        filters={filters}
+        total={loaded.page.total}
+        pageSize={loaded.page.pageSize}
+        defaultSort="importe"
+      />
     </>
   );
 };

@@ -40,6 +40,9 @@ export const PrimaryNav = () => {
 
 export const AlertSubNav = () => {
   const pathname = usePathname();
+  if (!pathname.startsWith("/alertas")) {
+    return null;
+  }
 
   return (
     <div className="border-t border-line/80 bg-subtle/60">

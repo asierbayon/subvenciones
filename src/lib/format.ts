@@ -2,6 +2,7 @@ const euro = new Intl.NumberFormat("es-ES", {
   style: "currency",
   currency: "EUR",
   maximumFractionDigits: 0,
+  useGrouping: "always",
 });
 
 const euroExact = new Intl.NumberFormat("es-ES", {
@@ -9,9 +10,12 @@ const euroExact = new Intl.NumberFormat("es-ES", {
   currency: "EUR",
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
+  useGrouping: "always",
 });
 
-const integer = new Intl.NumberFormat("es-ES");
+const integer = new Intl.NumberFormat("es-ES", {
+  useGrouping: "always",
+});
 
 const decimal = new Intl.NumberFormat("es-ES", {
   maximumFractionDigits: 1,

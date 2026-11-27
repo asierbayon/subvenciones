@@ -1,3 +1,4 @@
+import { CleanGetForm } from "@/components/clean-get-form";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import type { Filters } from "@/lib/params";
@@ -19,6 +20,7 @@ type FilterFormProps = {
   showMrr?: boolean;
   importeHint?: string;
   extraHidden?: Record<string, string>;
+  defaultSort?: string;
 };
 
 const Field = ({ id, label, children }: { id: string; label: string; children: React.ReactNode }) => (
@@ -45,13 +47,16 @@ export const FilterForm = ({
   showMrr = false,
   importeHint = "Importe",
   extraHidden,
+  defaultSort = "fecha",
 }: FilterFormProps) => {
   const territorios = [...facets.ccaa].sort(compareCcaa);
+  const keepsSort = filters.sort !== defaultSort;
+  const keepsAscending = filters.dir === "asc";
 
   return (
-    <form action={action} method="get" className="mb-6">
-      <input type="hidden" name="sort" value={filters.sort} />
-      <input type="hidden" name="dir" value={filters.dir} />
+    <CleanGetForm action={action} className="mb-6" omitValues={{ sort: defaultSort, dir: "desc" }}>
+      {keepsSort ? <input type="hidden" name="sort" value={filters.sort} /> : null}
+      {keepsAscending ? <input type="hidden" name="dir" value={filters.dir} /> : null}
       {Object.entries(extraHidden ?? {}).map(([key, value]) => (
         <input key={key} type="hidden" name={key} value={value} />
       ))}
@@ -174,6 +179,6 @@ export const FilterForm = ({
           </a>
         </div>
       </fieldset>
-    </form>
+    </CleanGetForm>
   );
 };

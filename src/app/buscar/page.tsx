@@ -31,7 +31,7 @@ const BuscarPage = async ({ searchParams }: { searchParams: Promise<SearchParams
   }
 
   const convocatoriasHref = `/convocatorias${toQuery(filters, { page: 1, sort: "fecha", dir: "desc" })}`;
-  const beneficiariosHref = `/beneficiarios${toQuery({ ...filters, sort: "importe", dir: "desc" }, { page: 1 })}`;
+  const beneficiariosHref = `/beneficiarios${toQuery({ ...filters, sort: "importe", dir: "desc" }, { page: 1 }, "importe")}`;
 
   return (
     <>
