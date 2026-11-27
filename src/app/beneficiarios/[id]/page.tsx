@@ -237,14 +237,17 @@ const BeneficiarioPage = async ({
       <div className="mt-8 grid gap-5 lg:grid-cols-2">
         <figure className="rounded-xl border border-line bg-elev p-5 shadow-2xs">
           <figcaption className="font-display text-base font-bold tracking-tight text-ink">
-            Importe por año
+            Importe por año, todos los instrumentos
           </figcaption>
+          <p className="mt-1 text-xs text-muted">
+            Suma subvenciones y garantías. Las cifras de arriba las separan.
+          </p>
           <YearChart data={loaded.found.years} />
           <YearTable data={loaded.found.years} />
         </figure>
         <figure className="rounded-xl border border-line bg-elev p-5 shadow-2xs">
           <figcaption className="font-display text-base font-bold tracking-tight text-ink">
-            De dónde llega
+            De dónde llega, todos los instrumentos
           </figcaption>
           <HorizontalBars data={loaded.found.territorios} />
           <DataTable data={loaded.found.territorios} firstColumn="Territorio" />

@@ -37,7 +37,7 @@ const columns: Column<Beneficiario>[] = [
   },
   {
     id: "importe",
-    header: "Importe",
+    header: "Importe total",
     sortKey: "importe",
     align: "right",
     cell: (row) => <span className="font-semibold">{formatEuro(row.importeTotal)}</span>,
@@ -61,7 +61,7 @@ const BeneficiariosPage = async ({ searchParams }: { searchParams: Promise<Searc
     <>
       <PageIntro eyebrow="Beneficiarios" title="Quién recibió las ayudas">
         <p>
-          {formatNumber(loaded.page.total)} personas jurídicas. Se agrupan por NIF. El volcado no incluye personas físicas.
+          {formatNumber(loaded.page.total)} personas jurídicas, agrupadas por NIF. El importe es el total de todos los instrumentos, garantías incluidas. En el inicio, la pestaña Solo subvenciones cuenta solo las dinerarias. El volcado no incluye personas físicas.
         </p>
       </PageIntro>
       <FilterForm
