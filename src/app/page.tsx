@@ -45,6 +45,19 @@ const Panel = async ({ searchParams }: { searchParams: Promise<SearchParams> }) 
       : filters.vista === "todos"
         ? "todos los instrumentos"
         : "subvenciones dinerarias";
+  const topHeading =
+    filters.vista === "garantia"
+      ? "Beneficiarios con más importe en garantías"
+      : filters.vista === "todos"
+        ? "Beneficiarios con más importe, todos los instrumentos"
+        : "Beneficiarios con más importe en subvenciones dinerarias";
+  const topCaption =
+    filters.vista === "garantia"
+      ? "Doce beneficiarios con mayor importe en garantías"
+      : filters.vista === "todos"
+        ? "Doce beneficiarios con mayor importe, todos los instrumentos"
+        : "Doce beneficiarios con mayor importe en subvenciones dinerarias";
+  const startsIn2018 = data.anios.length > 0 && data.anios[0].anio === 2018;
 
   return (
     <>
@@ -92,8 +105,8 @@ const Panel = async ({ searchParams }: { searchParams: Promise<SearchParams> }) 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Resumen de cifras">
         <Kpi label="Importe" value={formatCompactEuro(importe)} hint={vistaLabel} />
         <Kpi label="Concesiones" value={formatNumber(concesiones)} hint={vistaLabel} />
-        <Kpi label="Convocatorias" value={formatNumber(data.meta.nConvocatorias)} hint="En el volcado completo" />
-        <Kpi label="Beneficiarios" value={formatNumber(data.meta.nBeneficiarios)} hint="Personas jurídicas, agrupadas por NIF" />
+        <Kpi label="Convocatorias" value={formatNumber(data.meta.nConvocatorias)} hint="Todo el volcado, no cambia con la pestaña" />
+        <Kpi label="Beneficiarios" value={formatNumber(data.meta.nBeneficiarios)} hint="Todo el volcado, personas jurídicas por NIF" />
       </section>
 
       <p className="mt-5 rounded-xl border border-line bg-elev/70 px-4 py-3 text-sm leading-relaxed text-muted">
@@ -110,6 +123,12 @@ const Panel = async ({ searchParams }: { searchParams: Promise<SearchParams> }) 
             Importe por año
           </figcaption>
           <YearChart data={data.anios} />
+          {startsIn2018 ? (
+            <p className="mt-2 text-xs text-muted">
+              Los ficheros de concesiones de este volcado empiezan en 2018, aunque las convocatorias se remontan a años
+              anteriores.
+            </p>
+          ) : null}
           <YearTable data={data.anios} />
         </figure>
         <figure className="rounded-xl border border-line bg-elev p-5 shadow-2xs">
@@ -138,7 +157,7 @@ const Panel = async ({ searchParams }: { searchParams: Promise<SearchParams> }) 
       <section className="mt-8 rounded-xl border border-line bg-elev p-5 shadow-2xs">
         <div className="mb-4 flex items-baseline justify-between gap-4">
           <h2 className="font-display text-lg font-bold tracking-tight text-ink">
-            Beneficiarios con más importe
+            {topHeading}
           </h2>
           <Link
             href="/beneficiarios"
@@ -149,7 +168,7 @@ const Panel = async ({ searchParams }: { searchParams: Promise<SearchParams> }) 
         </div>
         <div className="overflow-x-auto rounded-lg border border-line">
           <table className="w-full border-collapse text-sm">
-            <caption className="sr-only">Doce beneficiarios con mayor importe en la vista seleccionada</caption>
+            <caption className="sr-only">{topCaption}</caption>
             <thead>
               <tr className="border-b border-line bg-subtle/70 text-left text-xs font-semibold tracking-wider text-muted uppercase">
                 <th scope="col" className="px-4 py-3">Beneficiario</th>

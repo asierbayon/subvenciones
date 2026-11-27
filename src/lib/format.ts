@@ -17,8 +17,14 @@ const integer = new Intl.NumberFormat("es-ES", {
   useGrouping: "always",
 });
 
+const compactWhole = new Intl.NumberFormat("es-ES", {
+  maximumFractionDigits: 0,
+  useGrouping: "always",
+});
+
 const decimal = new Intl.NumberFormat("es-ES", {
   maximumFractionDigits: 1,
+  useGrouping: "always",
 });
 
 export const formatEuro = (value: number | null | undefined) => {
@@ -44,11 +50,12 @@ export const formatNumber = (value: number | null | undefined) => {
 
 export const formatCompactEuro = (value: number) => {
   const absolute = Math.abs(value);
-  if (absolute >= 1_000_000_000) {
-    return `${decimal.format(value / 1_000_000_000)} mil M€`;
-  }
   if (absolute >= 1_000_000) {
-    return `${decimal.format(value / 1_000_000)} M€`;
+    const millions = value / 1_000_000;
+    if (Math.abs(millions) >= 100) {
+      return `${compactWhole.format(millions)} M€`;
+    }
+    return `${decimal.format(millions)} M€`;
   }
   if (absolute >= 10_000) {
     return `${decimal.format(value / 1_000)} mil €`;
