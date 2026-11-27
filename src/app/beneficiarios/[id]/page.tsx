@@ -8,6 +8,7 @@ import { ExternalLink, Fact } from "@/components/facts";
 import { RegistroMercantil } from "@/components/registro-mercantil";
 import { PaginationBar } from "@/components/pagination-bar";
 import { AlertBanner } from "@/components/alert-banner";
+import { AlertCard, AlertDisclosure, AlertFlow } from "@/components/alert-ui";
 import { PageIntro, SetupNeeded } from "@/components/setup-needed";
 import { listVinculosBeneficiario, type VinculoAlert } from "@/lib/alerts";
 import { guard } from "@/lib/db";
@@ -40,45 +41,71 @@ const roleLabel = (rol: string) => {
   return rol;
 };
 
-const CompanyRole = ({ cargo }: { cargo: string }) => {
-  if (!cargo) {
-    return null;
-  }
-  return <> ({cargo})</>;
-};
-
 const VinculoBlock = ({ rows }: { rows: VinculoAlert[] }) => {
   if (rows.length === 0) {
     return null;
   }
   return (
     <section className="mt-10" aria-label="Vínculos políticos">
-      <h2 className="font-display text-xl font-bold tracking-tight text-ink">Vínculos políticos</h2>
-      <div className="mt-3">
-        <AlertBanner>
-          El nombre del administrador coincide con un cargo público del órgano que concede, por encima del 85 % de
-          confianza. Puede haber homónimos. No demuestra que esa persona interviniera en el expediente.
-        </AlertBanner>
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="font-display text-xl font-bold tracking-tight text-ink">Vínculos políticos</h2>
+        <Link href="/alertas/vinculos" className={`${linkClass} text-sm`}>
+          Ver todos los vínculos
+        </Link>
       </div>
+      <AlertBanner>
+        Coincidencia por nombre (≥ 85 % de confianza) con un cargo público del organismo concedente. Puede haber
+        homónimos.
+      </AlertBanner>
       <ul className="grid gap-4">
         {rows.map((alert) => (
-          <li key={alert.id} className="rounded-xl border border-line bg-elev p-5 shadow-2xs">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge tone="terra">{roleLabel(alert.rol)}</Badge>
-              <Badge>Confianza {Math.round(alert.confianza * 100).toLocaleString("es-ES")} %</Badge>
-            </div>
-            <p className="mt-3 text-sm leading-relaxed text-ink">
-              <span className="font-semibold">{alert.politicoNombre}</span>, {alert.cuerpo}. La ayuda la concede{" "}
-              {alert.organismo} ({alert.anio}). En la sociedad consta como {alert.adminNombre}
-              <CompanyRole cargo={alert.adminCargo} />.
-            </p>
-            <p className="mt-2 text-sm leading-relaxed text-muted">{alert.motivo}</p>
-            <div className="mt-3 flex flex-wrap gap-4 text-sm">
-              <ExternalLink href={alert.fuenteUrl}>Fuente publicada</ExternalLink>
-              <Link href="/alertas/vinculos" className={linkClass}>
-                Ver el indicador completo
-              </Link>
-            </div>
+          <li key={alert.id}>
+            <AlertCard
+              tone="terra"
+              badges={
+                <>
+                  <Badge tone="terra">{roleLabel(alert.rol)}</Badge>
+                  <Badge tone="accent">
+                    Confianza {Math.round(alert.confianza * 100).toLocaleString("es-ES")} %
+                  </Badge>
+                </>
+              }
+              title={alert.politicoNombre}
+              subtitle={
+                <p className="text-xs text-muted">
+                  {alert.organismo} · {alert.anio}
+                </p>
+              }
+              metric={formatEuro(alert.importeSuma)}
+              metricLabel={`${formatNumber(alert.n)} ${alert.n === 1 ? "ayuda" : "ayudas"}`}
+              footer={
+                <>
+                  {alert.fuenteUrl ? (
+                    <div className="text-xs">
+                      <ExternalLink href={alert.fuenteUrl}>Fuente del cargo</ExternalLink>
+                    </div>
+                  ) : null}
+                  <AlertDisclosure label="Explicación detallada">
+                    <p className="text-xs leading-relaxed text-muted">{alert.motivo}</p>
+                  </AlertDisclosure>
+                </>
+              }
+            >
+              <AlertFlow
+                connector="Mismo órgano"
+                connectorTone="terra"
+                left={{
+                  eyebrow: "Cargo público",
+                  title: alert.politicoNombre,
+                  detail: alert.cuerpo,
+                }}
+                right={{
+                  eyebrow: "En la sociedad",
+                  title: alert.adminNombre,
+                  detail: alert.adminCargo || "Cargo no informado",
+                }}
+              />
+            </AlertCard>
           </li>
         ))}
       </ul>

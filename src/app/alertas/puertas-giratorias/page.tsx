@@ -1,16 +1,23 @@
 import Link from "next/link";
-import { AlertBanner } from "@/components/alert-banner";
+import { AlertBanner, type MethodologyItem } from "@/components/alert-banner";
 import { AlertFilterForm, AlertPager } from "@/components/alert-filters";
+import {
+  AlertCard,
+  AlertDisclosure,
+  AlertEvidenceList,
+  AlertFactStrip,
+  AlertFlow,
+  AlertMetaRow,
+  AlertResultsBar,
+  alertLinkClass,
+} from "@/components/alert-ui";
 import { ExternalLink } from "@/components/facts";
 import { EmptyState, PageIntro, SetupNeeded } from "@/components/setup-needed";
 import { Badge } from "@/components/ui/badge";
 import { DatabaseMissingError, guard } from "@/lib/db";
 import { parseAlertFilters, type AlertSearch } from "@/lib/alerts";
-import { formatDate, formatEuro } from "@/lib/format";
-import { listPuertas, type PuertaAlert, type PuertaItem } from "@/lib/puertas";
-
-const linkClass =
-  "font-medium text-accent underline decoration-accent/30 underline-offset-4 transition-colors hover:text-accent-strong hover:decoration-accent";
+import { formatDate, formatEuro, formatNumber } from "@/lib/format";
+import { listPuertas, type PuertaAlert } from "@/lib/puertas";
 
 const TIPOS = [
   { value: "despues", label: "Después del cese" },
@@ -34,6 +41,21 @@ const COHERENCIA: Record<string, string> = {
   parlamento: "Parlamento",
 };
 
+const METHODOLOGY: MethodologyItem[] = [
+  {
+    label: "Patrón detectado",
+    text: "Un cargo deja el órgano y, en los 4 años siguientes, el BORME le nombra administrador o consejero en una sociedad que cobró ayudas o contratos de ese órgano.",
+  },
+  {
+    label: "Ceses supuestos",
+    text: "Los electos de 2015 no repetidos cierran el 14 jun 2019; los de 2019 cierran el 16 jun 2023 (sin padrón de 2023). Altos cargos salen de la sección II.A del BOE.",
+  },
+  {
+    label: "Límites",
+    text: "Un homónimo basta para coincidir el nombre, quien repitió en 2023 puede figurar como cesado y las fechas de concejal son las del mandato, no la dimisión.",
+  },
+];
+
 const roleLabel = (rol: string) => ROLES[rol] ?? rol;
 
 const coherenciaLabel = (value: string) => COHERENCIA[value] ?? value;
@@ -45,72 +67,17 @@ const CompanyName = ({ alert }: { alert: PuertaAlert }) => {
     return alert.empresa;
   }
   return (
-    <Link href={`/beneficiarios/${alert.beneficiarioId}`} className={linkClass}>
+    <Link href={`/beneficiarios/${alert.beneficiarioId}`} className={alertLinkClass}>
       {alert.empresa}
     </Link>
   );
 };
 
-const TypeBadge = ({ tipo }: { tipo: string }) => {
-  if (tipo === "durante") {
-    return <Badge>Durante el mandato</Badge>;
-  }
-  return <Badge tone="terra">Después del cese</Badge>;
-};
-
-const PartyName = ({ partido }: { partido: string }) => {
-  if (!partido) {
-    return null;
-  }
-  return <>, {partido}</>;
-};
-
-const GapText = ({ alert }: { alert: PuertaAlert }) => {
+const connectorText = (alert: PuertaAlert) => {
   if (alert.tipo === "durante") {
-    return <>El nombramiento cae dentro del mandato.</>;
+    return "Durante el mandato";
   }
-  return <>{alert.dias.toLocaleString("es-ES")} días después del cese supuesto.</>;
-};
-
-const MoneyLine = ({ item }: { item: PuertaItem }) => {
-  const label = `${formatEuro(item.importe)} el ${formatDate(item.fecha)}`;
-  if (item.clase === "contrato" && item.url) {
-    return <ExternalLink href={item.url}>{label}</ExternalLink>;
-  }
-  if (item.clase === "ayuda" && item.ref) {
-    return (
-      <Link href={`/concesiones/${item.ref}`} className={linkClass}>
-        {label}
-      </Link>
-    );
-  }
-  return <span className="font-medium tabular-nums">{label}</span>;
-};
-
-const ItemKind = ({ clase }: { clase: string }) => {
-  if (clase === "contrato") {
-    return <span className="ml-1.5 text-xs text-muted">Contrato</span>;
-  }
-  return <span className="ml-1.5 text-xs text-muted">Subvención</span>;
-};
-
-const FuenteLinks = ({ alert }: { alert: PuertaAlert }) => {
-  if (!alert.fuenteUrl && !alert.fuentePoliticoUrl) {
-    return <span className="text-muted">Anuncio del BORME sin identificador</span>;
-  }
-  if (!alert.fuenteUrl) {
-    return <ExternalLink href={alert.fuentePoliticoUrl}>Fuente del cargo</ExternalLink>;
-  }
-  if (!alert.fuentePoliticoUrl) {
-    return <ExternalLink href={alert.fuenteUrl}>Anuncio del BORME {alert.fuenteBorme}</ExternalLink>;
-  }
-  return (
-    <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
-      <ExternalLink href={alert.fuenteUrl}>Anuncio del BORME {alert.fuenteBorme}</ExternalLink>
-      <span className="text-muted">·</span>
-      <ExternalLink href={alert.fuentePoliticoUrl}>Fuente del cargo</ExternalLink>
-    </span>
-  );
+  return `+${formatNumber(alert.dias)} días tras cese`;
 };
 
 const AlertList = ({ alerts }: { alerts: PuertaAlert[] }) => {
@@ -119,53 +86,109 @@ const AlertList = ({ alerts }: { alerts: PuertaAlert[] }) => {
   }
   return (
     <ol className="grid gap-4">
-      {alerts.map((alert) => (
-        <li key={alert.id} className="rounded-xl border border-line bg-elev p-5 shadow-2xs">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="font-display text-base font-semibold text-ink">{alert.politicoNombre}</h2>
-            <p className="text-sm font-semibold text-ink tabular-nums">{formatEuro(alert.importeMandato)}</p>
-          </div>
-          <p className="mt-1 text-xs text-muted sm:text-sm">
-            <CompanyName alert={alert} /> · <span className="font-mono">{alert.nif}</span> · {alert.organismo}
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <TypeBadge tipo={alert.tipo} />
-            <Badge tone="accent">{roleLabel(alert.rol)}</Badge>
-            <Badge>{coherenciaLabel(alert.coherencia)}</Badge>
-            <Badge>Puntuación {scoreLabel(alert.puntuacion)}</Badge>
-          </div>
-          <p className="mt-3 text-sm leading-relaxed text-ink">
-            {alert.cuerpo}
-            <PartyName partido={alert.partido} />. Mandato {formatDate(alert.mandatoDesde)} –{" "}
-            {formatDate(alert.mandatoHasta)}. Cese supuesto {formatDate(alert.cese)}. En la sociedad figura{" "}
-            {alert.adminNombre} como {alert.adminCargo.toLowerCase()} desde el {formatDate(alert.nombramiento)}.{" "}
-            <GapText alert={alert} />
-          </p>
-          <p className="mt-2 text-sm leading-relaxed text-ink/90">
-            Del órgano, dentro del mandato: {formatEuro(alert.importeMandato)} ({alert.nAyudas.toLocaleString("es-ES")}{" "}
-            subvenciones, {alert.nContratos.toLocaleString("es-ES")} contratos). Hasta el anuncio:{" "}
-            {formatEuro(alert.importePrevio)}.
-          </p>
-          <p className="mt-2 text-sm leading-relaxed text-muted">{alert.motivo}</p>
-          <p className="mt-3 text-sm">
-            <FuenteLinks alert={alert} />
-          </p>
-          <ul className="mt-4 divide-y divide-line overflow-hidden rounded-lg border border-line bg-subtle/40">
-            {alert.items.map((item) => (
-              <li
-                key={`${item.clase}-${item.ref}-${item.fecha}`}
-                className="flex flex-col gap-1 px-3.5 py-2.5 text-sm sm:flex-row sm:items-baseline sm:justify-between"
-              >
-                <span>
-                  <MoneyLine item={item} />
-                  <ItemKind clase={item.clase} />
-                </span>
-                <span className="text-muted sm:max-w-[60%] sm:text-right">{item.titulo}</span>
-              </li>
-            ))}
-          </ul>
-        </li>
-      ))}
+      {alerts.map((alert) => {
+        const partyText = alert.partido ? `${alert.cuerpo} · ${alert.partido}` : alert.cuerpo;
+        const movementsCount = alert.items.length;
+
+        return (
+          <li key={alert.id}>
+            <AlertCard
+              tone={alert.tipo === "despues" ? "terra" : "accent"}
+              badges={
+                <>
+                  {alert.tipo === "durante" ? (
+                    <Badge tone="accent">Durante el mandato</Badge>
+                  ) : (
+                    <Badge tone="terra">Después del cese</Badge>
+                  )}
+                  <Badge tone="terra">{roleLabel(alert.rol)}</Badge>
+                  <Badge>{coherenciaLabel(alert.coherencia)}</Badge>
+                  <Badge>Puntuación {scoreLabel(alert.puntuacion)}</Badge>
+                </>
+              }
+              title={alert.politicoNombre}
+              subtitle={
+                <AlertMetaRow
+                  items={[
+                    <CompanyName key="co" alert={alert} />,
+                    <span key="nif" className="font-mono">{alert.nif}</span>,
+                    alert.organismo,
+                  ]}
+                />
+              }
+              metric={formatEuro(alert.importeMandato)}
+              metricLabel="En el mandato"
+              footer={
+                <>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                    {alert.fuenteUrl ? (
+                      <ExternalLink href={alert.fuenteUrl}>
+                        {alert.fuenteBorme ? `Anuncio ${alert.fuenteBorme}` : "Anuncio en el BORME"}
+                      </ExternalLink>
+                    ) : (
+                      <span className="text-muted">BORME sin identificador</span>
+                    )}
+                    {alert.fuentePoliticoUrl ? (
+                      <ExternalLink href={alert.fuentePoliticoUrl}>Fuente del cargo</ExternalLink>
+                    ) : null}
+                  </div>
+                  {movementsCount > 0 ? (
+                    <AlertDisclosure label="Ver subvenciones y contratos" count={movementsCount}>
+                      <AlertEvidenceList
+                        items={alert.items.map((item) => ({
+                          key: `${item.clase}-${item.ref}-${item.fecha}`,
+                          amount: item.importe,
+                          date: item.fecha,
+                          title: item.titulo,
+                          tag: item.clase === "contrato" ? "Contrato" : "Subvención",
+                          href:
+                            item.clase === "contrato"
+                              ? item.url || undefined
+                              : item.ref
+                                ? `/concesiones/${item.ref}`
+                                : undefined,
+                          external: item.clase === "contrato",
+                        }))}
+                      />
+                    </AlertDisclosure>
+                  ) : null}
+                  <AlertDisclosure label="Explicación detallada">
+                    <p className="text-xs leading-relaxed text-muted">{alert.motivo}</p>
+                  </AlertDisclosure>
+                </>
+              }
+            >
+              <div className="grid gap-3">
+                <AlertFlow
+                  connector={connectorText(alert)}
+                  connectorTone={alert.tipo === "despues" ? "terra" : "accent"}
+                  left={{
+                    eyebrow: "1. Cargo público",
+                    title: partyText,
+                    detail: `Cese supuesto: ${formatDate(alert.cese)}`,
+                    dates: `Mandato: ${formatDate(alert.mandatoDesde)} – ${formatDate(alert.mandatoHasta)}`,
+                  }}
+                  right={{
+                    eyebrow: "2. Entra en la sociedad",
+                    title: alert.adminCargo || "Administrador",
+                    detail: `${alert.adminNombre} · ${alert.empresa}`,
+                    dates: `Nombramiento BORME: ${formatDate(alert.nombramiento)}`,
+                  }}
+                />
+                <AlertFactStrip
+                  columns={4}
+                  items={[
+                    { label: "Cobrado en mandato", value: formatEuro(alert.importeMandato), highlight: true },
+                    { label: "Total hasta nombramiento", value: formatEuro(alert.importePrevio) },
+                    { label: "Subvenciones", value: formatNumber(alert.nAyudas) },
+                    { label: "Contratos", value: formatNumber(alert.nContratos) },
+                  ]}
+                />
+              </div>
+            </AlertCard>
+          </li>
+        );
+      })}
     </ol>
   );
 };
@@ -175,9 +198,8 @@ const PartialNote = ({ parcial }: { parcial: boolean }) => {
     return null;
   }
   return (
-    <AlertBanner>
-      Esta tabla se calculó con una muestra de anuncios del BORME (
-      <code className="rounded bg-subtle px-1 py-0.5 font-mono text-xs">--limit</code>). No es el pase completo.
+    <AlertBanner title="Cálculo parcial">
+      Esta tabla se calculó con una muestra de anuncios del BORME (<code>--limit</code>), no el pase completo.
     </AlertBanner>
   );
 };
@@ -205,13 +227,9 @@ const PuertasPage = async ({ searchParams }: { searchParams: Promise<AlertSearch
     return (
       <PageIntro eyebrow="Puertas giratorias" title="Falta calcular este indicador">
         <p>
-          Hace falta el índice, los cargos y el extracto del BORME con la tabla{" "}
-          <code className="rounded bg-subtle px-1.5 py-0.5 font-mono text-xs text-ink">acto</code> (fechas de anuncio).
-          En la raíz del proyecto:{" "}
-          <code className="rounded bg-subtle px-1.5 py-0.5 font-mono text-xs text-ink">
-            python3 pipeline/puertas_giratorias.py
-          </code>
-          . No reconstruye la base ni vuelve a bajar el BORME.
+          Hace falta el índice, los cargos y el extracto del BORME con la tabla <code>acto</code> (fechas de anuncio).
+          En la raíz del proyecto: <code>python3 pipeline/puertas_giratorias.py</code>. No reconstruye la base ni vuelve
+          a bajar el BORME.
         </p>
       </PageIntro>
     );
@@ -220,21 +238,11 @@ const PuertasPage = async ({ searchParams }: { searchParams: Promise<AlertSearch
   return (
     <>
       <PageIntro eyebrow="Puertas giratorias" title="Quien deja el cargo y entra en la empresa que cobró">
-        <p>
-          Un órgano da subvenciones o contratos a una sociedad. Alguien que ocupó ese órgano deja el escaño y, en los
-          cuatro años siguientes, el BORME le nombra administrador o consejero de esa sociedad. Si se ha generado la
-          caché de la sección II.A del BOE, el mismo cruce incluye altos cargos del Estado cesados en un ministerio.
-        </p>
-        <p>
-          El cese de 2015 es el 14 jun 2019 si esa persona no está en el fichero de 2019. El de 2019 es el 16 jun 2023:
-          no hay electos de 2023, así que se supone que no repitió aunque siguiera en el cargo. Una baja de alcalde
-          anterior se usa solo si no queda una concejalía posterior. Las fechas de concejal son las del mandato, no la
-          dimisión.
-        </p>
+        <p>Cargos públicos nombrados administradores en empresas que cobraron ayudas o contratos de su antiguo órgano.</p>
       </PageIntro>
-      <AlertBanner>
-        Indicio, no prueba. Un homónimo basta para coincidir el nombre, el extracto no separa un nombramiento de un
-        cese, y quien repitió en 2023 puede aparecer como si hubiera salido. No dice que firmara el expediente.
+      <AlertBanner methodology={METHODOLOGY}>
+        Un homónimo puede coincidir en el nombre y quien repitió en 2023 puede salir como cesado. No demuestra que
+        firmara el expediente.
       </AlertBanner>
       <PartialNote parcial={loaded.meta.parcial} />
       <AlertFilterForm
@@ -244,6 +252,14 @@ const PuertasPage = async ({ searchParams }: { searchParams: Promise<AlertSearch
         anios={loaded.anios}
         organismos={loaded.organismos}
         tipos={TIPOS}
+      />
+      <AlertResultsBar
+        total={loaded.total}
+        shown={loaded.alerts.length}
+        page={filters.page}
+        pageSize={loaded.pageSize}
+        singular="caso"
+        plural="casos"
       />
       <AlertList alerts={loaded.alerts} />
       <AlertPager

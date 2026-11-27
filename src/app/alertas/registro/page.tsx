@@ -1,23 +1,83 @@
 import Link from "next/link";
-import { AlertBanner } from "@/components/alert-banner";
+import { AlertBanner, type MethodologyItem } from "@/components/alert-banner";
 import { AlertFilterForm, AlertPager } from "@/components/alert-filters";
+import {
+  AlertCard,
+  AlertDisclosure,
+  AlertEvidenceList,
+  AlertMetaRow,
+  AlertResultsBar,
+  alertLinkClass,
+} from "@/components/alert-ui";
 import { ExternalLink } from "@/components/facts";
 import { EmptyState, PageIntro, SetupNeeded } from "@/components/setup-needed";
 import { Badge } from "@/components/ui/badge";
 import { DatabaseMissingError, guard } from "@/lib/db";
-import { formatDate, formatEuro, formatNumber } from "@/lib/format";
+import { formatEuro, formatNumber } from "@/lib/format";
 import {
   listVinculos,
   parseAlertFilters,
   vinculoLabel,
   VINCULO_TIPOS,
   type AlertSearch,
+  type VinculoMiembro,
 } from "@/lib/registro";
 
-const linkClass =
-  "font-medium text-accent underline decoration-accent/30 underline-offset-4 transition-colors hover:text-accent-strong hover:decoration-accent";
+const METHODOLOGY: MethodologyItem[] = [
+  {
+    label: "Qué agrupa",
+    text: "Dos o más sociedades con NIF distinto que cobran del mismo organismo y publican en el BORME (2016–2023) al mismo administrador, socio único o domicilio.",
+  },
+  {
+    label: "Confianza y filtros",
+    text: "Solo entran sociedades con cruce de confianza alta. Se excluyen personas presentes en más de 20 empresas y domicilios en más de 12.",
+  },
+  {
+    label: "Límites",
+    text: "El BORME no incluye DNI (pueden existir homónimos) y una gestoría puede compartir domicilio con empresas sin relación entre sí.",
+  },
+];
 
-const VinculosPage = async ({ searchParams }: { searchParams: Promise<AlertSearch> }) => {
+const MemberRow = ({ alertId, miembro }: { alertId: number; miembro: VinculoMiembro }) => (
+  <li key={`${alertId}-${miembro.beneficiarioId ?? miembro.nif}`} className="px-3.5 py-2.5 text-xs">
+    <div className="flex flex-wrap items-baseline justify-between gap-2">
+      <div className="min-w-0">
+        {miembro.beneficiarioId ? (
+          <Link href={`/beneficiarios/${miembro.beneficiarioId}`} className={alertLinkClass}>
+            {miembro.nombre}
+          </Link>
+        ) : (
+          <span className="font-semibold text-ink">{miembro.nombre}</span>
+        )}
+        <span className="ml-2 text-muted">
+          <span className="font-mono">{miembro.nif}</span> · {formatNumber(miembro.n)}{" "}
+          {miembro.n === 1 ? "ayuda" : "ayudas"}
+        </span>
+      </div>
+      <div className="flex shrink-0 items-center gap-3">
+        {miembro.fuenteUrl ? <ExternalLink href={miembro.fuenteUrl}>BORME</ExternalLink> : null}
+        <span className="font-semibold text-ink tabular-nums">{formatEuro(miembro.importe)}</span>
+      </div>
+    </div>
+    {miembro.items.length > 0 ? (
+      <div className="mt-2">
+        <AlertDisclosure label="Ver concesiones" count={miembro.items.length}>
+          <AlertEvidenceList
+            items={miembro.items.map((item) => ({
+              key: String(item.concesionId),
+              amount: item.importe,
+              date: item.fecha,
+              title: item.titulo || "Concesión",
+              href: `/concesiones/${item.concesionId}`,
+            }))}
+          />
+        </AlertDisclosure>
+      </div>
+    ) : null}
+  </li>
+);
+
+const RegistroPage = async ({ searchParams }: { searchParams: Promise<AlertSearch> }) => {
   const filters = parseAlertFilters(await searchParams);
   const loaded = await guard(async () => {
     try {
@@ -40,11 +100,8 @@ const VinculosPage = async ({ searchParams }: { searchParams: Promise<AlertSearc
     return (
       <PageIntro eyebrow="Registro mercantil" title="Falta calcular este indicador">
         <p>
-          Ejecuta{" "}
-          <code className="rounded bg-subtle px-1.5 py-0.5 font-mono text-xs text-ink">
-            python3 pipeline/borme.py run
-          </code>
-          . Hace falta el índice de concesiones y el extracto del BORME. El paso es opcional.
+          Ejecuta <code>python3 pipeline/borme.py run</code>. Hace falta el índice de concesiones y el extracto del
+          BORME. El paso es opcional.
         </p>
       </PageIntro>
     );
@@ -53,15 +110,10 @@ const VinculosPage = async ({ searchParams }: { searchParams: Promise<AlertSearc
   return (
     <>
       <PageIntro eyebrow="Registro mercantil" title="Quién está detrás de las sociedades">
-        <p>
-          Agrupa beneficiarios con NIF distinto que cobran del mismo organismo y, en el BORME de 2016 a 2023, publican
-          al mismo administrador, al mismo socio único o el mismo domicilio social. Solo entran los cruces de confianza
-          alta.
-        </p>
+        <p>Beneficiarios con distinto NIF que cobran del mismo organismo y comparten persona o domicilio en el BORME.</p>
       </PageIntro>
-      <AlertBanner>
-        El BORME escribe el nombre de la persona sin DNI. Dos administradores homónimos pueden parecer el mismo, y una
-        gestoría concentra domicilios. El indicador pide mirar los expedientes: no demuestra concertación.
+      <AlertBanner methodology={METHODOLOGY}>
+        Dos administradores pueden ser homónimos y una gestoría puede agrupar domicilios sin que exista concertación.
       </AlertBanner>
       <AlertFilterForm
         action="/alertas/registro"
@@ -71,65 +123,79 @@ const VinculosPage = async ({ searchParams }: { searchParams: Promise<AlertSearc
         organismos={loaded.organismos}
         tipos={VINCULO_TIPOS}
       />
+      <AlertResultsBar
+        total={loaded.total}
+        shown={loaded.alerts.length}
+        page={filters.page}
+        pageSize={loaded.pageSize}
+        singular="grupo"
+        plural="grupos"
+      />
       {loaded.alerts.length === 0 ? (
         <EmptyState>Ningún indicador con estos filtros.</EmptyState>
       ) : (
         <ol className="grid gap-4">
-          {loaded.alerts.map((alert) => (
-            <li key={alert.id} className="rounded-xl border border-line bg-elev p-5 shadow-2xs">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="font-display text-base font-semibold text-ink">{alert.etiqueta}</h2>
-                <p className="text-sm font-semibold text-ink tabular-nums">{formatEuro(alert.importe)}</p>
-              </div>
-              <p className="mt-1 text-xs text-muted sm:text-sm">
-                {alert.organismo} · {alert.ccaa} · {alert.anio || "sin año"} · {formatNumber(alert.nBeneficiarios)}{" "}
-                sociedades
-              </p>
-              <div className="mt-3">
-                <Badge tone="terra">{vinculoLabel(alert.tipo)}</Badge>
-              </div>
-              <p className="mt-3 text-sm leading-relaxed text-ink/90">{alert.motivo}</p>
-              <ul className="mt-4 grid gap-3">
-                {alert.miembros.map((miembro) => (
-                  <li
-                    key={`${alert.id}-${miembro.beneficiarioId}`}
-                    className="rounded-lg border border-line bg-subtle/40 p-3.5"
-                  >
-                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      {miembro.beneficiarioId ? (
-                        <Link href={`/beneficiarios/${miembro.beneficiarioId}`} className={linkClass}>
-                          {miembro.nombre}
-                        </Link>
-                      ) : (
-                        <span className="font-semibold text-ink">{miembro.nombre}</span>
-                      )}
-                      <span className="text-sm font-semibold text-ink tabular-nums">{formatEuro(miembro.importe)}</span>
-                    </div>
-                    <p className="mt-1 text-xs text-muted sm:text-sm">
-                      <span className="font-mono">{miembro.nif}</span> · {formatNumber(miembro.n)} subvenciones
-                      {miembro.fuenteUrl ? (
-                        <>
-                          {" · "}
-                          <ExternalLink href={miembro.fuenteUrl}>Anuncio en el BORME</ExternalLink>
-                        </>
+          {loaded.alerts.map((alert) => {
+            const previewMembers = alert.miembros.slice(0, 3);
+            const remainingMembers = alert.miembros.slice(3);
+
+            return (
+              <li key={alert.id}>
+                <AlertCard
+                  tone="terra"
+                  badges={
+                    <>
+                      <Badge tone="terra">{vinculoLabel(alert.tipo)}</Badge>
+                      <Badge tone="accent">{formatNumber(alert.nBeneficiarios)} sociedades</Badge>
+                    </>
+                  }
+                  title={alert.etiqueta}
+                  subtitle={<AlertMetaRow items={[alert.organismo, alert.ccaa, alert.anio || "sin año"]} />}
+                  metric={formatEuro(alert.importe)}
+                  metricLabel="Importe combinado"
+                  footer={
+                    <>
+                      {remainingMembers.length > 0 ? (
+                        <AlertDisclosure
+                          label={
+                            remainingMembers.length === 1
+                              ? "Mostrar 1 sociedad restante"
+                              : `Mostrar las ${formatNumber(remainingMembers.length)} sociedades restantes`
+                          }
+                          count={remainingMembers.length}
+                        >
+                          <ul className="divide-y divide-line overflow-hidden rounded-lg border border-line bg-subtle/35">
+                            {remainingMembers.map((miembro) => (
+                              <MemberRow
+                                key={`${alert.id}-${miembro.beneficiarioId ?? miembro.nif}`}
+                                alertId={alert.id}
+                                miembro={miembro}
+                              />
+                            ))}
+                          </ul>
+                        </AlertDisclosure>
                       ) : null}
-                    </p>
-                    {miembro.items.length > 0 ? (
-                      <ul className="mt-2 flex flex-col gap-1 text-sm">
-                        {miembro.items.map((item) => (
-                          <li key={item.concesionId}>
-                            <Link href={`/concesiones/${item.concesionId}`} className={linkClass}>
-                              {formatEuro(item.importe)} el {formatDate(item.fecha)}
-                            </Link>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            </li>
-          ))}
+                      <AlertDisclosure label="Explicación detallada">
+                        <p className="text-xs leading-relaxed text-muted">{alert.motivo}</p>
+                      </AlertDisclosure>
+                    </>
+                  }
+                >
+                  {previewMembers.length > 0 ? (
+                    <ul className="divide-y divide-line overflow-hidden rounded-lg border border-line bg-subtle/35">
+                      {previewMembers.map((miembro) => (
+                        <MemberRow
+                          key={`${alert.id}-${miembro.beneficiarioId ?? miembro.nif}`}
+                          alertId={alert.id}
+                          miembro={miembro}
+                        />
+                      ))}
+                    </ul>
+                  ) : null}
+                </AlertCard>
+              </li>
+            );
+          })}
         </ol>
       )}
       <AlertPager path="/alertas/registro" filters={filters} total={loaded.total} pageSize={loaded.pageSize} />
@@ -137,4 +203,4 @@ const VinculosPage = async ({ searchParams }: { searchParams: Promise<AlertSearc
   );
 };
 
-export default VinculosPage;
+export default RegistroPage;
