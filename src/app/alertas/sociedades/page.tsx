@@ -1,11 +1,23 @@
 import Link from "next/link";
-import { AlertBanner } from "@/components/alert-banner";
+import { AlertBanner, type MethodologyItem } from "@/components/alert-banner";
 import { AlertFilterForm, AlertPager } from "@/components/alert-filters";
+import {
+  AlertCard,
+  AlertDisclosure,
+  AlertEvidenceList,
+  AlertFactStrip,
+  AlertMetaRow,
+  AlertResultsBar,
+  AlertTabs,
+  alertLinkClass,
+  type AlertFactItem,
+} from "@/components/alert-ui";
 import { ExternalLink } from "@/components/facts";
 import { EmptyState, PageIntro, SetupNeeded } from "@/components/setup-needed";
 import { Badge } from "@/components/ui/badge";
+import { alertQuery } from "@/lib/alerts";
 import { DatabaseMissingError, guard } from "@/lib/db";
-import { formatDate, formatEuro } from "@/lib/format";
+import { formatDate, formatEuro, formatNumber } from "@/lib/format";
 import {
   confianzaLabel,
   listSociedades,
@@ -15,8 +27,27 @@ import {
   type AlertSearch,
 } from "@/lib/registro";
 
-const linkClass =
-  "font-medium text-accent underline decoration-accent/30 underline-offset-4 transition-colors hover:text-accent-strong hover:decoration-accent";
+const METHODOLOGY: MethodologyItem[] = [
+  {
+    label: "Reglas BORME (2016–2023)",
+    text: "Subvención dineraria ≥ 10.000 € a sociedad recién constituida con capital ≤ 3.100 €, disuelta poco después o cuya ayuda supera 10× su capital.",
+  },
+  {
+    label: "Vehículos de proyecto",
+    text: "En convocatorias de IDAE e incentivos regionales es habitual crear una sociedad vehículo con capital mínimo; se ocultan por defecto salvo señal adicional.",
+  },
+  {
+    label: "Cruce por nombre",
+    text: "El BORME rara vez publica el NIF, así que el emparejamiento se hace por denominación normalizada e indica si la confianza es alta o media.",
+  },
+];
+
+const ratioText = (ratio: number | null) => {
+  if (ratio === null || ratio <= 0) {
+    return null;
+  }
+  return `${ratio.toLocaleString("es-ES", { maximumFractionDigits: ratio >= 10 ? 0 : 1 })}× el capital`;
+};
 
 const SociedadesPage = async ({ searchParams }: { searchParams: Promise<AlertSearch> }) => {
   const raw = await searchParams;
@@ -45,38 +76,34 @@ const SociedadesPage = async ({ searchParams }: { searchParams: Promise<AlertSea
       <PageIntro eyebrow="Registro mercantil" title="Falta calcular este indicador">
         <p>
           El índice de concesiones está, pero todavía no se ha cruzado con el BORME. En la raíz del proyecto:{" "}
-          <code className="rounded bg-subtle px-1.5 py-0.5 font-mono text-xs text-ink">
-            python3 pipeline/borme.py run
-          </code>
-          . El paso es opcional: el índice base se construye sin él.
+          <code>python3 pipeline/borme.py run</code>. El paso es opcional: el índice base se construye sin él.
         </p>
       </PageIntro>
     );
   }
 
+  const baseQuery = alertQuery(filters, { page: 1 });
+  const mainTabHref = `/alertas/sociedades${baseQuery}`;
+  const vehiclesTabHref = baseQuery
+    ? `/alertas/sociedades${baseQuery}&vehiculos=1`
+    : "/alertas/sociedades?vehiculos=1";
+
   return (
     <>
       <PageIntro eyebrow="Registro mercantil" title="Sociedades recién creadas o de poco capital">
-        <p>
-          Cruza las sociedades del volcado con los anuncios del BORME de 2016 a 2023. Marca una subvención dineraria
-          de al menos 10.000 € cuando la sociedad se constituye poco antes, con un capital de hasta 3.100 €, cuando se
-          disuelve o se extingue poco después, o cuando la ayuda es al menos diez veces ese capital. En las convocatorias
-          de IDAE y de incentivos regionales un capital mínimo es el vehículo del proyecto: esa señal no sale aquí
-          salvo que se acumule otra (cierre u administrador compartido). El filtro de vehículos de proyecto la muestra.
-        </p>
+        <p>Empresas constituidas poco antes de la ayuda, con capital mínimo o disueltas poco después según el BORME.</p>
       </PageIntro>
-      <AlertBanner>
-        El capital social no es el patrimonio ni la facturación. Una sociedad limitada nueva con 3.100 € o menos puede
-        ser una empresa pequeña perfectamente regular. El BORME no publica el NIF de forma sistemática: el cruce es por
-        el nombre normalizado y se muestra la confianza.
+      <AlertBanner methodology={METHODOLOGY}>
+        El capital social no refleja el patrimonio ni la facturación. Una sociedad limitada con 3.000 € puede operar con
+        total normalidad.
       </AlertBanner>
-      {includeVehicles ? null : (
-        <p className="mb-5 text-sm">
-          <Link href="/alertas/sociedades?vehiculos=1" className={linkClass}>
-            Ver también los vehículos de proyecto de IDAE e incentivos regionales
-          </Link>
-        </p>
-      )}
+      <AlertTabs
+        label="Incluir vehículos de proyecto"
+        items={[
+          { href: mainTabHref, label: "Señales principales", active: !includeVehicles },
+          { href: vehiclesTabHref, label: "Incluir vehículos de proyecto", active: includeVehicles },
+        ]}
+      />
       <AlertFilterForm
         action="/alertas/sociedades"
         filters={filters}
@@ -84,62 +111,119 @@ const SociedadesPage = async ({ searchParams }: { searchParams: Promise<AlertSea
         anios={loaded.anios}
         organismos={loaded.organismos}
         tipos={SOCIEDAD_REGLAS}
+        hiddenFields={includeVehicles ? { vehiculos: "1" } : undefined}
+        clearHref={includeVehicles ? "/alertas/sociedades?vehiculos=1" : "/alertas/sociedades"}
+      />
+      <AlertResultsBar
+        total={loaded.total}
+        shown={loaded.alerts.length}
+        page={filters.page}
+        pageSize={loaded.pageSize}
+        singular="sociedad"
+        plural="sociedades"
       />
       {loaded.alerts.length === 0 ? (
         <EmptyState>Ningún indicador con estos filtros.</EmptyState>
       ) : (
         <ol className="grid gap-4">
-          {loaded.alerts.map((alert) => (
-            <li key={alert.id} className="rounded-xl border border-line bg-elev p-5 shadow-2xs">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="font-display text-base font-semibold text-ink">
-                  {alert.beneficiarioId ? (
-                    <Link href={`/beneficiarios/${alert.beneficiarioId}`} className={linkClass}>
-                      {alert.nombre}
-                    </Link>
-                  ) : (
-                    alert.nombre
-                  )}
-                </h2>
-                <p className="text-sm font-semibold text-ink tabular-nums">{formatEuro(alert.importe)}</p>
-              </div>
-              <p className="mt-1 text-xs text-muted sm:text-sm">
-                <span className="font-mono">{alert.nif}</span> · {alert.organismo} · {alert.ccaa} ·{" "}
-                {alert.anio || "sin año"}
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Badge tone="terra">{reglaLabel(alert.regla)}</Badge>
-                <Badge tone={alert.confianza === "alta" ? "accent" : "neutral"}>
-                  {confianzaLabel(alert.confianza)}
-                </Badge>
-              </div>
-              <p className="mt-3 text-sm leading-relaxed text-ink/90">{alert.motivo}</p>
-              <p className="mt-2 text-sm text-muted">
-                {alert.fechaConstitucion ? `Constitución ${formatDate(alert.fechaConstitucion)}. ` : ""}
-                {alert.capital !== null ? `Capital de referencia ${formatEuro(alert.capital)}. ` : ""}
-                {alert.fechaDisolucion ? `Cierre publicado ${formatDate(alert.fechaDisolucion)}. ` : ""}
-                {alert.fuenteUrl ? (
-                  <ExternalLink href={alert.fuenteUrl}>{alert.fuenteCve || "Anuncio en el BORME"}</ExternalLink>
-                ) : null}
-              </p>
-              <ul className="mt-4 divide-y divide-line overflow-hidden rounded-lg border border-line bg-subtle/40">
-                {alert.items.map((item) => (
-                  <li
-                    key={item.concesionId}
-                    className="flex flex-col gap-1 px-3.5 py-2.5 text-sm sm:flex-row sm:items-baseline sm:justify-between"
-                  >
-                    <Link href={`/concesiones/${item.concesionId}`} className={linkClass}>
-                      {formatEuro(item.importe)} el {formatDate(item.fecha)}
-                    </Link>
-                    <span className="text-muted sm:max-w-[60%] sm:text-right">{item.titulo}</span>
-                  </li>
-                ))}
-              </ul>
-            </li>
-          ))}
+          {loaded.alerts.map((alert) => {
+            const ratioLabel = ratioText(alert.ratio);
+            const facts: AlertFactItem[] = [
+              { label: "Ayuda recibida", value: formatEuro(alert.importe), highlight: true },
+              {
+                label: "Capital BORME",
+                value: alert.capital !== null ? formatEuro(alert.capital) : "—",
+                hint: ratioLabel ?? undefined,
+              },
+              {
+                label: "Constitución",
+                value: alert.fechaConstitucion ? formatDate(alert.fechaConstitucion) : "—",
+              },
+              {
+                label: alert.fechaDisolucion ? "Cierre publicado" : "Desfase temporal",
+                value: alert.fechaDisolucion
+                  ? formatDate(alert.fechaDisolucion)
+                  : alert.dias !== null
+                    ? `${formatNumber(alert.dias)} días`
+                    : "—",
+                highlight: Boolean(alert.fechaDisolucion),
+              },
+            ];
+
+            return (
+              <li key={alert.id}>
+                <AlertCard
+                  tone="terra"
+                  badges={
+                    <>
+                      <Badge tone="terra">{reglaLabel(alert.regla)}</Badge>
+                      <Badge tone={alert.confianza === "alta" ? "accent" : "neutral"}>
+                        {confianzaLabel(alert.confianza)}
+                      </Badge>
+                      {ratioLabel ? <Badge>{ratioLabel}</Badge> : null}
+                    </>
+                  }
+                  title={
+                    alert.beneficiarioId ? (
+                      <Link href={`/beneficiarios/${alert.beneficiarioId}`} className={alertLinkClass}>
+                        {alert.nombre}
+                      </Link>
+                    ) : (
+                      alert.nombre
+                    )
+                  }
+                  subtitle={
+                    <AlertMetaRow
+                      items={[
+                        alert.organismo,
+                        alert.ccaa,
+                        <span key="nif" className="font-mono">{alert.nif}</span>,
+                        alert.anio || "sin año",
+                      ]}
+                    />
+                  }
+                  metric={formatEuro(alert.importe)}
+                  metricLabel={alert.capital !== null ? `Capital: ${formatEuro(alert.capital)}` : undefined}
+                  footer={
+                    <>
+                      {alert.fuenteUrl ? (
+                        <div className="text-xs">
+                          <ExternalLink href={alert.fuenteUrl}>{alert.fuenteCve || "Anuncio en el BORME"}</ExternalLink>
+                        </div>
+                      ) : null}
+                      {alert.items.length > 0 ? (
+                        <AlertDisclosure label="Ver concesiones" count={alert.items.length}>
+                          <AlertEvidenceList
+                            items={alert.items.map((item) => ({
+                              key: String(item.concesionId),
+                              amount: item.importe,
+                              date: item.fecha,
+                              title: item.titulo,
+                              href: `/concesiones/${item.concesionId}`,
+                            }))}
+                          />
+                        </AlertDisclosure>
+                      ) : null}
+                      <AlertDisclosure label="Explicación detallada">
+                        <p className="text-xs leading-relaxed text-muted">{alert.motivo}</p>
+                      </AlertDisclosure>
+                    </>
+                  }
+                >
+                  <AlertFactStrip columns={4} items={facts} />
+                </AlertCard>
+              </li>
+            );
+          })}
         </ol>
       )}
-      <AlertPager path="/alertas/sociedades" filters={filters} total={loaded.total} pageSize={loaded.pageSize} />
+      <AlertPager
+        path="/alertas/sociedades"
+        filters={filters}
+        total={loaded.total}
+        pageSize={loaded.pageSize}
+        extraParams={includeVehicles ? { vehiculos: "1" } : undefined}
+      />
     </>
   );
 };

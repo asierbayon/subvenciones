@@ -13,6 +13,8 @@ type AlertFilterFormProps = {
   anios: number[];
   organismos: string[];
   tipos?: { value: string; label: string }[];
+  hiddenFields?: Record<string, string>;
+  clearHref?: string;
 };
 
 const pagerButtonClass =
@@ -21,29 +23,64 @@ const pagerButtonClass =
 const pagerDisabledClass =
   "inline-flex h-9 items-center gap-1.5 rounded-lg border border-line bg-subtle/60 px-3 text-sm font-medium text-muted/60 cursor-not-allowed";
 
-export const AlertFilterForm = ({ action, filters, ccaa, anios, organismos, tipos }: AlertFilterFormProps) => {
+const gridClass = (count: number) => {
+  if (count >= 4) {
+    return "mt-2 grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4";
+  }
+  if (count === 3) {
+    return "mt-2 grid gap-3.5 sm:grid-cols-3";
+  }
+  return "mt-2 grid gap-3.5 sm:grid-cols-2";
+};
+
+export const AlertFilterForm = ({
+  action,
+  filters,
+  ccaa,
+  anios,
+  organismos,
+  tipos,
+  hiddenFields,
+  clearHref,
+}: AlertFilterFormProps) => {
   const territorios = [...ccaa].sort(compareCcaa);
+  const showCcaa = territorios.length > 0;
+  const showAnios = anios.length > 0;
+  const showTipos = Boolean(tipos && tipos.length > 0);
+  const fieldCount = (showCcaa ? 1 : 0) + (showAnios ? 1 : 0) + 1 + (showTipos ? 1 : 0);
+  const hasActiveFilter = Boolean(
+    filters.ccaa || filters.anio || filters.organismo || (showTipos && filters.tipo),
+  );
+  const resetHref = clearHref ?? action;
+
   return (
-    <form action={action} method="get" className="mb-6">
-      <fieldset className="rounded-xl border border-line bg-elev p-5 shadow-2xs">
+    <form action={action} method="get" className="mb-5">
+      {hiddenFields
+        ? Object.entries(hiddenFields).map(([name, value]) => (
+            <input key={name} type="hidden" name={name} value={value} />
+          ))
+        : null}
+      <fieldset className="rounded-xl border border-line bg-elev p-4 shadow-2xs sm:p-5">
         <legend className="px-1.5 text-xs font-semibold tracking-wider text-muted uppercase">
           Filtros
         </legend>
-        <div className={tipos ? "mt-2 grid gap-4 md:grid-cols-4" : "mt-2 grid gap-4 md:grid-cols-3"}>
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="alerta-ccaa" className="text-xs font-medium text-muted">
-              Territorio
-            </label>
-            <Select id="alerta-ccaa" name="ccaa" defaultValue={filters.ccaa}>
-              <option value="">Cualquier territorio</option>
-              {territorios.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </Select>
-          </div>
-          {anios.length > 0 ? (
+        <div className={gridClass(fieldCount)}>
+          {showCcaa ? (
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="alerta-ccaa" className="text-xs font-medium text-muted">
+                Territorio
+              </label>
+              <Select id="alerta-ccaa" name="ccaa" defaultValue={filters.ccaa}>
+                <option value="">Cualquier territorio</option>
+                {territorios.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          ) : null}
+          {showAnios ? (
             <div className="flex flex-col gap-1.5">
               <label htmlFor="alerta-anio" className="text-xs font-medium text-muted">
                 Año
@@ -71,7 +108,7 @@ export const AlertFilterForm = ({ action, filters, ccaa, anios, organismos, tipo
               autoComplete="off"
             />
           </div>
-          {tipos ? (
+          {showTipos && tipos ? (
             <div className="flex flex-col gap-1.5">
               <label htmlFor="alerta-tipo" className="text-xs font-medium text-muted">
                 Señal
@@ -87,19 +124,25 @@ export const AlertFilterForm = ({ action, filters, ccaa, anios, organismos, tipo
             </div>
           ) : null}
         </div>
-        <datalist id="alerta-organismos">
-          {organismos.map((nombre) => (
-            <option key={nombre} value={nombre} />
-          ))}
-        </datalist>
-        <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-line pt-4">
-          <Button type="submit">Aplicar filtros</Button>
-          <a
-            href={action}
-            className="inline-flex h-9 items-center rounded-lg px-3 text-sm font-medium text-muted transition-colors hover:bg-highlight hover:text-ink"
-          >
-            Limpiar
-          </a>
+        {organismos.length > 0 ? (
+          <datalist id="alerta-organismos">
+            {organismos.map((nombre) => (
+              <option key={nombre} value={nombre} />
+            ))}
+          </datalist>
+        ) : null}
+        <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-line pt-3.5">
+          <Button type="submit" size="sm">
+            Aplicar filtros
+          </Button>
+          {hasActiveFilter ? (
+            <a
+              href={resetHref}
+              className="inline-flex h-8 items-center rounded-lg px-3 text-xs font-medium text-muted transition-colors hover:bg-highlight hover:text-ink"
+            >
+              Limpiar filtros
+            </a>
+          ) : null}
         </div>
       </fieldset>
     </form>
@@ -112,21 +155,36 @@ export const AlertPager = ({
   total,
   pageSize,
   field = "page",
+  extraParams,
 }: {
   path: string;
   filters: AlertFilters;
   total: number;
   pageSize: number;
   field?: "page" | "pagina";
+  extraParams?: Record<string, string>;
 }) => {
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const page = Math.min(field === "pagina" ? filters.pagina : filters.page, pages);
   const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(total, page * pageSize);
-  const previousPatch = field === "pagina" ? { pagina: page - 1 } : { page: page - 1 };
-  const nextPatch = field === "pagina" ? { pagina: page + 1 } : { page: page + 1 };
-  const previousHref = page > 1 ? `${path}${alertQuery(filters, previousPatch)}` : null;
-  const nextHref = page < pages ? `${path}${alertQuery(filters, nextPatch)}` : null;
+
+  const buildHref = (targetPage: number) => {
+    const patch = field === "pagina" ? { pagina: targetPage } : { page: targetPage };
+    const baseQuery = alertQuery(filters, patch);
+    if (!extraParams || Object.keys(extraParams).length === 0) {
+      return `${path}${baseQuery}`;
+    }
+    const params = new URLSearchParams(baseQuery.startsWith("?") ? baseQuery.slice(1) : baseQuery);
+    for (const [key, value] of Object.entries(extraParams)) {
+      params.set(key, value);
+    }
+    return `${path}?${params.toString()}`;
+  };
+
+  const previousHref = page > 1 ? buildHref(page - 1) : null;
+  const nextHref = page < pages ? buildHref(page + 1) : null;
+
   return (
     <nav
       aria-label="Paginación de alertas"

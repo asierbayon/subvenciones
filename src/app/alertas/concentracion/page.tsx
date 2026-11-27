@@ -1,13 +1,35 @@
 import Link from "next/link";
-import { AlertBanner } from "@/components/alert-banner";
+import { AlertBanner, type MethodologyItem } from "@/components/alert-banner";
 import { AlertFilterForm, AlertPager } from "@/components/alert-filters";
+import {
+  AlertCard,
+  AlertFactStrip,
+  AlertMetaRow,
+  AlertResultsBar,
+  AlertTabs,
+  InlinePercentBar,
+  alertLinkClass,
+} from "@/components/alert-ui";
 import { EmptyState, PageIntro, SetupNeeded } from "@/components/setup-needed";
-import { listConcentracion, listRecurrentes, parseAlertFilters, type AlertSearch } from "@/lib/alerts";
+import { Badge } from "@/components/ui/badge";
+import { alertQuery, listConcentracion, listRecurrentes, parseAlertFilters, type AlertSearch } from "@/lib/alerts";
 import { DatabaseMissingError, guard } from "@/lib/db";
 import { formatEuro, formatNumber } from "@/lib/format";
 
-const linkClass =
-  "font-medium text-accent underline decoration-accent/30 underline-offset-4 transition-colors hover:text-accent-strong hover:decoration-accent";
+const METHODOLOGY: MethodologyItem[] = [
+  {
+    label: "Índice HHI (0 a 1)",
+    text: "Suma los cuadrados de la cuota de cada beneficiario en subvenciones dinerarias. 0 es reparto total y 1 es un único perceptor.",
+  },
+  {
+    label: "Umbral marcado",
+    text: "Organismos con al menos 20 concesiones y 4 beneficiarios donde el HHI llega a 0,25 o el mayor perceptor supera el 50 % del importe.",
+  },
+  {
+    label: "Ganadores recurrentes",
+    text: "Entidades privadas (sin universidades ni NIF P/Q/S) que cobran del mismo organismo al menos 4 años y suman 1 M€ o más.",
+  },
+];
 
 const percent = (value: number) =>
   new Intl.NumberFormat("es-ES", { style: "percent", maximumFractionDigits: 1 }).format(value);
@@ -40,145 +62,202 @@ const ConcentracionPage = async ({ searchParams }: { searchParams: Promise<Alert
     return (
       <PageIntro eyebrow="Concentración" title="Falta calcular este indicador">
         <p>
-          Ejecuta{" "}
-          <code className="rounded bg-subtle px-1.5 py-0.5 font-mono text-xs text-ink">
-            python3 pipeline/alerts.py concentracion
-          </code>
-          .
+          Ejecuta <code>python3 pipeline/alerts.py concentracion</code>.
         </p>
       </PageIntro>
     );
   }
 
-  const yearLabel = filters.anio ? filters.anio : "todo el periodo del volcado";
+  const baseQuery = alertQuery(filters, { page: 1, pagina: 1 });
+  const concentracionTabHref = `/alertas/concentracion${baseQuery}`;
+  const recurrentesTabHref = baseQuery
+    ? `/alertas/concentracion${baseQuery}&repeticion=1`
+    : "/alertas/concentracion?repeticion=1";
+  const yearLabel = filters.anio ? filters.anio : "todo el periodo";
 
   return (
     <>
       <PageIntro eyebrow="Concentración" title="Quién se queda el importe de cada organismo">
-        <p>
-          Solo subvenciones dinerarias. El índice de Herfindahl (HHI) suma el cuadrado de la cuota de cada
-          beneficiario: 0 es reparto total y 1 es un único perceptor. Se marca el organismo cuando, con al menos 20
-          concesiones y 4 beneficiarios, el HHI llega a 0,25 o el mayor perceptor se lleva la mitad o más. 0,25 es la
-          escala que el Departamento de Justicia de EE. UU. llama «muy concentrado» en mercados; aquí es solo una regla
-          de lectura.
-        </p>
+        <p>Mide cuánto presupuesto concentran los mayores beneficiarios y quién cobra año tras año.</p>
       </PageIntro>
-      <AlertBanner>
-        Una diputación que financia siempre a la misma residencia, o un ministerio que concentra proyectos en pocas
-        universidades, puede estar aplicando una política explícita. El indicador no dice que esa política sea irregular.
+      <AlertBanner methodology={METHODOLOGY}>
+        Concentrar ayudas en pocos centros o financiar al mismo beneficiario varios años puede responder a una política
+        pública explícita.
       </AlertBanner>
+      <AlertTabs
+        label="Vista de concentración"
+        items={[
+          { href: concentracionTabHref, label: "Por organismo", active: !showRepeticion },
+          { href: recurrentesTabHref, label: "Ganadores que repiten", active: showRepeticion },
+        ]}
+      />
       <AlertFilterForm
         action="/alertas/concentracion"
         filters={filters}
         ccaa={loaded.concentracion.ccaa}
         anios={loaded.concentracion.anios}
         organismos={loaded.concentracion.organismos}
-      />
-      <p className="mb-4 text-sm text-muted">
-        Vista: <span className="font-medium text-ink">{yearLabel}</span>. Organismos con al menos 15 concesiones. En el
-        periodo completo hay {formatNumber(loaded.concentracion.flagged)} por encima del umbral.
-      </p>
-      {loaded.concentracion.rows.length === 0 ? (
-        <EmptyState>Ningún organismo con estos filtros.</EmptyState>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-line bg-elev shadow-2xs">
-          <table className="w-full border-collapse text-sm">
-            <caption className="sr-only">Concentración del importe por organismo</caption>
-            <thead>
-              <tr className="border-b border-line bg-subtle/70 text-left text-xs font-semibold tracking-wider text-muted uppercase">
-                <th scope="col" className="px-4 py-3">Organismo</th>
-                <th scope="col" className="px-4 py-3">Territorio</th>
-                <th scope="col" className="px-4 py-3 text-right">HHI</th>
-                <th scope="col" className="px-4 py-3 text-right">Mayor</th>
-                <th scope="col" className="px-4 py-3 text-right">5 mayores</th>
-                <th scope="col" className="px-4 py-3 text-right">Concesiones</th>
-                <th scope="col" className="px-4 py-3 text-right">Importe</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {loaded.concentracion.rows.map((row) => (
-                <tr key={row.id} className="align-top transition-colors hover:bg-highlight/60">
-                  <th scope="row" className="px-4 py-3 text-left font-medium">
-                    <Link
-                      href={`/concesiones?organismo=${encodeURIComponent(row.organismo)}`}
-                      className={linkClass}
-                    >
-                      {row.organismo}
-                    </Link>
-                    {row.alerta ? (
-                      <span className="mt-1 block text-xs font-semibold text-terra">Por encima del umbral</span>
-                    ) : null}
-                  </th>
-                  <td className="px-4 py-3 text-muted">{row.ccaa}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">
-                    {row.hhi.toLocaleString("es-ES", { maximumFractionDigits: 3 })}
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums">{percent(row.top1)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{percent(row.top5)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-muted">{formatNumber(row.n)}</td>
-                  <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatEuro(row.importe)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <AlertPager
-        path="/alertas/concentracion"
-        filters={filters}
-        total={loaded.concentracion.total}
-        pageSize={loaded.concentracion.pageSize}
+        hiddenFields={showRepeticion ? { repeticion: "1" } : undefined}
+        clearHref={showRepeticion ? "/alertas/concentracion?repeticion=1" : "/alertas/concentracion"}
       />
 
-      <h2 className="mt-12 font-display text-xl font-bold tracking-tight text-ink">Ganadores que repiten</h2>
-      <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
-        Repetir una ayuda varios años es habitual. La lista no se abre sola. Solo entran entidades privadas que no son
-        universidades, con al menos cuatro años y un millón de euros.
-      </p>
-      {loaded.recurrentes === null ? (
-        <p className="mt-4 text-sm">
-          <Link href="/alertas/concentracion?repeticion=1" className={linkClass}>
-            Ver beneficiarios que repiten
-          </Link>
-        </p>
-      ) : loaded.recurrentes.rows.length === 0 ? (
-        <EmptyState>Ningún beneficiario recurrente con estos filtros.</EmptyState>
+      {!showRepeticion ? (
+        <>
+          <AlertResultsBar
+            total={loaded.concentracion.total}
+            shown={loaded.concentracion.rows.length}
+            page={filters.page}
+            pageSize={loaded.concentracion.pageSize}
+            singular="organismo"
+            plural="organismos"
+            extra={
+              <span className="inline-flex flex-wrap items-center gap-2">
+                <span>Periodo: {yearLabel}</span>
+                <Badge tone="terra">{formatNumber(loaded.concentracion.flagged)} sobre el umbral</Badge>
+              </span>
+            }
+          />
+          {loaded.concentracion.rows.length === 0 ? (
+            <EmptyState>Ningún organismo con estos filtros.</EmptyState>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-line bg-elev shadow-2xs">
+              <table className="w-full border-collapse text-sm">
+                <caption className="sr-only">Concentración del importe por organismo</caption>
+                <thead>
+                  <tr className="border-b border-line bg-subtle/70 text-left text-xs font-semibold tracking-wider text-muted uppercase">
+                    <th scope="col" className="px-4 py-3">Organismo</th>
+                    <th scope="col" className="px-4 py-3">Territorio</th>
+                    <th scope="col" className="px-4 py-3 text-right">HHI</th>
+                    <th scope="col" className="px-4 py-3 text-right">Mayor perceptor</th>
+                    <th scope="col" className="px-4 py-3 text-right">Top 5</th>
+                    <th scope="col" className="px-4 py-3 text-right">Concesiones</th>
+                    <th scope="col" className="px-4 py-3 text-right">Importe</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {loaded.concentracion.rows.map((row) => (
+                    <tr key={row.id} className="align-top transition-colors hover:bg-highlight/60">
+                      <th scope="row" className="px-4 py-3 text-left font-medium">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Link
+                            href={`/concesiones?organismo=${encodeURIComponent(row.organismo)}`}
+                            className={alertLinkClass}
+                          >
+                            {row.organismo}
+                          </Link>
+                          {row.alerta ? <Badge tone="terra">Concentrado</Badge> : null}
+                        </div>
+                      </th>
+                      <td className="px-4 py-3 text-muted">{row.ccaa}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-ink tabular-nums">
+                        {row.hhi.toLocaleString("es-ES", { maximumFractionDigits: 3 })}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <InlinePercentBar
+                          ratio={row.top1}
+                          label={percent(row.top1)}
+                          tone={row.top1 >= 0.5 ? "terra" : "accent"}
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <InlinePercentBar ratio={row.top5} label={percent(row.top5)} tone="accent" />
+                      </td>
+                      <td className="px-4 py-3 text-right text-muted tabular-nums">{formatNumber(row.n)}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-ink tabular-nums">
+                        {formatEuro(row.importe)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <AlertPager
+            path="/alertas/concentracion"
+            filters={filters}
+            total={loaded.concentracion.total}
+            pageSize={loaded.concentracion.pageSize}
+          />
+        </>
       ) : (
-        <ol className="mt-4 grid gap-4">
-          {loaded.recurrentes.rows.map((row) => (
-            <li key={row.id} className="rounded-xl border border-line bg-elev p-5 shadow-2xs">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h3 className="font-display text-base font-semibold text-ink">
-                  {row.beneficiarioId ? (
-                    <Link href={`/beneficiarios/${row.beneficiarioId}`} className={linkClass}>
-                      {row.nombre}
-                    </Link>
-                  ) : (
-                    row.nombre
-                  )}
-                </h3>
-                <p className="text-sm font-semibold text-ink tabular-nums">{formatEuro(row.importe)}</p>
-              </div>
-              <p className="mt-1 text-xs text-muted sm:text-sm">
-                <span className="font-mono">{row.nif}</span> · {row.organismo} · {row.ccaa}
-              </p>
-              <p className="mt-2 text-sm leading-relaxed text-ink/90">
-                Cobra de este organismo en {row.nAnios} años ({row.anios.join(", ")}), con {formatNumber(row.n)}{" "}
-                concesiones. Es un indicador de repetición, no de un trato irregular.
-              </p>
-            </li>
-          ))}
-        </ol>
+        <>
+          <AlertResultsBar
+            total={loaded.recurrentes?.total ?? 0}
+            shown={loaded.recurrentes?.rows.length ?? 0}
+            page={filters.pagina}
+            pageSize={loaded.recurrentes?.pageSize ?? 15}
+            singular="beneficiario recurrente"
+            plural="beneficiarios recurrentes"
+          />
+          {!loaded.recurrentes || loaded.recurrentes.rows.length === 0 ? (
+            <EmptyState>Ningún beneficiario recurrente con estos filtros.</EmptyState>
+          ) : (
+            <ol className="grid gap-4">
+              {loaded.recurrentes.rows.map((row) => (
+                <li key={row.id}>
+                  <AlertCard
+                    tone="accent"
+                    badges={
+                      <>
+                        <Badge tone="accent">{row.nAnios} años cobrando</Badge>
+                        {row.anios.map((year) => (
+                          <Badge key={year}>{year}</Badge>
+                        ))}
+                      </>
+                    }
+                    title={
+                      row.beneficiarioId ? (
+                        <Link href={`/beneficiarios/${row.beneficiarioId}`} className={alertLinkClass}>
+                          {row.nombre}
+                        </Link>
+                      ) : (
+                        row.nombre
+                      )
+                    }
+                    subtitle={
+                      <AlertMetaRow
+                        items={[row.organismo, row.ccaa, <span key="nif" className="font-mono">{row.nif}</span>]}
+                      />
+                    }
+                    metric={formatEuro(row.importe)}
+                    metricLabel={`${formatNumber(row.n)} concesiones`}
+                  >
+                    <AlertFactStrip
+                      columns={3}
+                      items={[
+                        {
+                          label: "Continuidad",
+                          value: `${row.nAnios} ejercicios`,
+                          hint: `${row.anioMin} – ${row.anioMax}`,
+                        },
+                        {
+                          label: "Concesiones",
+                          value: formatNumber(row.n),
+                        },
+                        {
+                          label: "Media por año",
+                          value: formatEuro(row.nAnios > 0 ? row.importe / row.nAnios : row.importe),
+                          highlight: true,
+                        },
+                      ]}
+                    />
+                  </AlertCard>
+                </li>
+              ))}
+            </ol>
+          )}
+          {loaded.recurrentes ? (
+            <AlertPager
+              path="/alertas/concentracion"
+              filters={filters}
+              total={loaded.recurrentes.total}
+              pageSize={loaded.recurrentes.pageSize}
+              field="pagina"
+              extraParams={{ repeticion: "1" }}
+            />
+          ) : null}
+        </>
       )}
-      {loaded.recurrentes ? (
-        <AlertPager
-          path="/alertas/concentracion"
-          filters={filters}
-          total={loaded.recurrentes.total}
-          pageSize={loaded.recurrentes.pageSize}
-          field="pagina"
-        />
-      ) : null}
     </>
   );
 };
